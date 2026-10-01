@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* Basenine's own brand, applied to its internal tool: ivory workspace, white work surfaces, ink type.
+   Lime means "act" (primary actions), pink means "feedback" (pins, highlights, counts).
+   Satoshi for everything people read; Geist Pixel only for small labels; Geist Mono for class names. */
+@theme {
+  --color-bg: #fffef4;
+  --color-panel: #ffffff;
+  --color-sunken: #f7f5ea;
+  --color-line: #e9e6d8;
+  --color-line-strong: #d3cfbe;
+  --color-ink: #0a0a0a;
+  --color-ink-2: #2f2d29;
+  --color-muted: #6b665e;
+  --color-night: #1d1c1f;
+
+  --color-accent: #96ff7c;
+  --color-accent-ink: #0a0a0a;
+  --color-accent-soft: #eaf6e6;
+  --color-pink: #ffacca;
+  --color-pink-soft: #fff0f5;
+  --color-pink-deep: #b8245f;
+  --color-plum: #540224;
+
+  --color-warn: #8a5300;
+  --color-warn-soft: #fff3da;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-info: #2747c7;
+  --color-info-soft: #edf1ff;
+
+  --font-sans: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-pixel: var(--font-geist-pixel-square), "Geist Mono", ui-monospace, monospace;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-soft: 0 3px 10px rgb(33 31 84 / 0.08);
+  --shadow-pop: 0 10px 30px rgb(10 10 10 / 0.1), 0 0 0 1px rgb(10 10 10 / 0.06);
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01";
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-pink);
+  color: var(--color-plum);
+}
+
+/* Small pixel-type labels, the way basenine.co uses Geist Pixel: sentence case, sparing. */
+.eyebrow {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--color-muted);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.dot-grid {
+  background-color: var(--color-bg);
+  background-image: radial-gradient(circle, rgb(10 10 10 / 0.11) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+dialog::backdrop {
+  background: rgb(10 10 10 / 0.32);
+  backdrop-filter: blur(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
