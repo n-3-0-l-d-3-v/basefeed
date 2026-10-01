@@ -1,0 +1,24 @@
+{
+  "name": "@bn/widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bn/anchor": "workspace:*",
+    "@bn/shared": "workspace:*",
+    "modern-screenshot": "^4.6.0",
+    "preact": "^10.27.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "jsdom": "^27.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  }
+}
