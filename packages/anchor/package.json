@@ -1,0 +1,22 @@
+{
+  "name": "@bn/anchor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "fast-check": "^4.3.0",
+    "jsdom": "^27.0.0",
+    "@types/jsdom": "^21.1.7",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  }
+}
