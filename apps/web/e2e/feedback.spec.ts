@@ -121,6 +121,43 @@ test.describe("team on the dashboard", () => {
     await expect(page.getByRole("article", { name: /Comment \d+/ })).toContainText("Logo should be bigger");
   });
 
+  test("attaches files, inserts emoji and plays Loom links inline in a thread", async ({ page }) => {
+    // Stand-in for Loom's player so the test stays offline and deterministic.
+    await page.route("https://www.loom.com/embed/**", (r) => r.fulfill({ contentType: "text/html", body: "<title>Loom</title>" }));
+    await page.goto("/");
+    await page.keyboard.press("Control+k");
+    const search = page.getByRole("combobox", { name: "Search" });
+    await search.fill("Logo should be bigger");
+    await expect(page.getByRole("option").first()).toContainText("Logo should be bigger");
+    await search.press("Enter");
+    const detail = page.getByRole("article", { name: /Comment \d+/ });
+
+    await expect(detail.getByRole("button", { name: "Attach files" })).toBeEnabled(); // thread loaded
+    const png = { name: `${unique("logo reference")}.png`, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") };
+    await detail.getByLabel("Files to attach").setInputFiles(png);
+    const image = detail.getByRole("img", { name: png.name });
+    await expect(image).toHaveJSProperty("naturalWidth", 1); // served back from private storage via a signed URL
+
+    await detail.getByLabel("Files to attach").setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") });
+    await expect(detail.getByRole("alert")).toHaveText("Attach images (PNG, JPG, WebP, GIF) or PDFs.");
+
+    const loom = "https://www.loom.com/share/0123456789abcdef0123456789abcdef";
+    const reply = detail.getByLabel("Reply");
+    await reply.fill(`Recorded a walkthrough: ${loom}.`);
+    await reply.press("Control+Home");
+    await detail.getByRole("button", { name: "Insert emoji" }).click();
+    await page.getByRole("menuitem", { name: "👍" }).click();
+    await expect(reply).toHaveValue(`👍Recorded a walkthrough: ${loom}.`);
+    await detail.getByRole("button", { name: "Reply", exact: true }).click();
+    const sent = detail.getByRole("region", { name: "Replies" });
+    await expect(sent.getByRole("link", { name: loom })).toHaveAttribute("href", loom); // trailing "." is not part of the link
+    await expect(sent.locator('iframe[title="Loom video"]')).toHaveAttribute("src", "https://www.loom.com/embed/0123456789abcdef0123456789abcdef");
+
+    await image.hover();
+    await detail.getByRole("button", { name: `Remove ${png.name}` }).click();
+    await expect(image).toHaveCount(0);
+  });
+
   test("moves a card on the board and records who did it", async ({ page }) => {
     await page.goto(`/p/${PROJECT}/board`);
     const card = page.getByRole("region", { name: "Open column" }).locator("article").first();
