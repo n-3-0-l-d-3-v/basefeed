@@ -76,6 +76,9 @@ export const AnchorReportSchema = z.object({
     .array(
       z.object({
         id: z.uuid(),
+        // Which anchor this was resolved against, so a report can't undo a re-pin that landed first.
+        anchorKey: shortText(400),
+        anchorDigest: shortText(300),
         state: z.enum(["attached", "suggested", "detached"]),
         changes: z.array(z.object({ field: shortText(40), from: shortText(300), to: shortText(300) })).max(40),
         comparable: z.boolean(),

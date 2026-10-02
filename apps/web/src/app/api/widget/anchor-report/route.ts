@@ -22,7 +22,9 @@ export const POST = widgetRoute(async (ctx) => {
             checked_at: checkedAt,
           })
           .eq("id", r.id)
-          .eq("project_id", ctx.project.id),
+          .eq("project_id", ctx.project.id)
+          .eq("anchor->>key", r.anchorKey)
+          .eq("anchor->>digest", r.anchorDigest),
       ),
     );
   }

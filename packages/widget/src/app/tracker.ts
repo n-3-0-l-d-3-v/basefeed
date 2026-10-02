@@ -64,21 +64,23 @@ export class Tracker {
   reports(): AnchorReport["reports"] {
     const out: AnchorReport["reports"] = [];
     for (const p of this.placed) {
-      if (!p.resolution || !p.comment.snapshot) continue;
+      const anchor = p.comment.anchor;
+      if (!p.resolution || !p.comment.snapshot || !anchor) continue;
+      const of = { id: p.comment.id, anchorKey: anchor.key, anchorDigest: anchor.digest };
       const state = p.resolution.status;
       const diff =
         p.element && state === "attached" ? diffSnapshot(p.comment.snapshot, takeSnapshot(p.element)) : { comparable: false, changes: [] };
       const stored = p.comment.change_summary;
       // Viewed at another breakpoint: styles can't be compared, so keep the last comparable result.
       if (!diff.comparable && stored) {
-        if (p.comment.anchor_state !== state) out.push({ id: p.comment.id, state, changes: stored.changes, comparable: stored.comparable });
+        if (p.comment.anchor_state !== state) out.push({ ...of, state, changes: stored.changes, comparable: stored.comparable });
         continue;
       }
       const same =
         p.comment.anchor_state === state &&
         JSON.stringify(stored?.changes ?? []) === JSON.stringify(diff.changes) &&
         (stored?.comparable ?? false) === diff.comparable;
-      if (!same) out.push({ id: p.comment.id, state, changes: diff.changes, comparable: diff.comparable });
+      if (!same) out.push({ ...of, state, changes: diff.changes, comparable: diff.comparable });
     }
     return out;
   }
