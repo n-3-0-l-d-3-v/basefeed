@@ -330,3 +330,62 @@ test.describe("widget API security", () => {
     expect(stolen.status()).toBe(403);
   });
 });
+
+test.describe("API for coding agents", () => {
+  test("a personal token reads, replies to and resolves feedback over REST and MCP, until it is revoked", async ({ page, request }) => {
+    await login(page);
+    await page.goto("/account");
+    const tokenName = unique("e2e agent");
+    await page.getByLabel("Token name").fill(tokenName);
+    await page.getByRole("button", { name: "Create token" }).click();
+    const token = await page.getByLabel("New API token").inputValue();
+    const auth = { authorization: `Bearer ${token}` };
+
+    // REST v1
+    const missing = await request.get("/api/v1/feedback");
+    expect(missing.status()).toBe(401);
+    expect(missing.headers()["www-authenticate"]).toContain("Bearer");
+    const list = await request.get("/api/v1/feedback?limit=50", { headers: auth });
+    expect(list.status()).toBe(200);
+    const { feedback } = (await list.json()) as { feedback: { id: string; number: number; summary: string; status: string }[] };
+    expect(feedback.length).toBeGreaterThan(0);
+    expect(feedback.every((f) => f.status !== "resolved")).toBe(true); // unresolved by default
+    const item = feedback[0]!;
+    const one = await (await request.get(`/api/v1/feedback/${item.id}`, { headers: auth })).json();
+    expect(one.feedback.markdown).toContain(`## Feedback #${item.number}`);
+    expect((await request.get("/api/v1/feedback/00000000-0000-4000-8000-000000000000", { headers: auth })).status()).toBe(404);
+
+    // MCP over Streamable HTTP, as Claude Code calls it
+    let rpcId = 0;
+    const mcp = async (method: string, params?: unknown) => {
+      const res = await request.post("/api/mcp", {
+        headers: { ...auth, accept: "application/json, text/event-stream", "content-type": "application/json" },
+        data: { jsonrpc: "2.0", id: ++rpcId, method, params },
+      });
+      expect(res.status()).toBe(200);
+      return (await res.json()).result;
+    };
+    const init = await mcp("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "1" } });
+    expect(init.serverInfo.name).toBe("basenine-feedback");
+    const { tools } = await mcp("tools/list");
+    expect(tools.map((t: { name: string }) => t.name).sort()).toEqual(["get_feedback", "list_feedback", "reply", "set_status"]);
+    const call = async (name: string, args: Record<string, unknown>) => ((await mcp("tools/call", { name, arguments: args })).content[0].text as string);
+    expect(await call("list_feedback", { limit: 50 })).toContain(`id: ${item.id}`);
+    expect(await call("get_feedback", { id: item.id })).toContain(`## Feedback #${item.number}`);
+    const replyText = unique("Done via MCP");
+    expect(await call("reply", { id: item.id, body: replyText })).toBe("Reply posted.");
+    expect(await call("set_status", { id: item.id, status: "resolved" })).toBe(`#${item.number} is now resolved.`);
+
+    // The team sees the agent's work, attributed to the token's owner.
+    await page.goto(`/p/${PROJECT}?c=${item.id}`);
+    const detail = page.getByRole("article", { name: `Comment ${item.number}` });
+    await expect(detail.getByText(replyText)).toBeVisible();
+    await expect(detail.getByLabel("Status")).toHaveValue("resolved");
+
+    // Revoked tokens stop working immediately.
+    await page.goto("/account");
+    await page.getByRole("listitem").filter({ hasText: tokenName }).getByRole("button", { name: "Revoke" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: tokenName })).toContainText("revoked");
+    expect((await request.get("/api/v1/feedback", { headers: auth })).status()).toBe(401);
+  });
+});
