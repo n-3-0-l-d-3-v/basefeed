@@ -24,6 +24,15 @@ export async function login(page: Page) {
 
 export const unique = (label: string) => `${label} ${Date.now().toString(36)}`;
 
+/** Local Supabase's Mailpit inbox, where development email is delivered. */
+export const MAILPIT = "http://127.0.0.1:56324";
+
+export async function inbox(to: string): Promise<{ Subject: string; Snippet: string }[]> {
+  const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
+  if (!res.ok) return [];
+  return ((await res.json()) as { messages: { Subject: string; Snippet: string }[] }).messages ?? [];
+}
+
 /** The framed client site, once the widget inside it has connected to the dashboard. */
 export async function siteFrame(page: Page) {
   const site = page.frameLocator('iframe[title^="Live preview"]');

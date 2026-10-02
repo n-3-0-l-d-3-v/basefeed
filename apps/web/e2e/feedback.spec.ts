@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, PROJECT, SITE, siteFrame, unique } from "./helpers";
+import { inbox, login, PROJECT, SITE, siteFrame, unique } from "./helpers";
 
 test.describe("site visitors", () => {
   test("ordinary visitors get only the 1 KB loader and no widget", async ({ page }) => {
@@ -131,6 +131,16 @@ test.describe("clients via share link", () => {
     await client.close();
 
     await expect(page.getByText(text)).toBeVisible();
+
+    // The team is emailed about the client's comment...
+    await expect.poll(async () => (await inbox("demo@basenine.test")).some((m) => m.Snippet.includes(text)), { timeout: 20_000 }).toBe(true);
+
+    // ...and when the team replies from the dashboard, the client is emailed the answer.
+    const answer = unique("Yes, changing it to Book a call");
+    await page.getByText(text).click();
+    await page.getByLabel("Reply").fill(answer);
+    await page.getByRole("button", { name: "Reply", exact: true }).click();
+    await expect.poll(async () => (await inbox("casey@client.test")).some((m) => m.Snippet.includes(answer)), { timeout: 20_000 }).toBe(true);
   });
 });
 
