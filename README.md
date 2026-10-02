@@ -25,7 +25,7 @@ client site (any origin)                         app (Next.js 16)               
 │        anchoring engine      │ ◀── postMessage │   membership, rate limit  │     │  activity log       │
 └──────────────────────────────┘   (origin-      │ dashboard (as the user,   │ ──▶ │ job queue (SKIP     │
            ▲ framed by                checked)   │   RLS-enforced)           │     │  LOCKED, backoff)   │
-           └──────────────────────── Canvas ◀─── │ triage worker ─▶ Claude   │     │ realtime → dashboard│
+           └──────────────────────── Canvas ◀─── │ triage worker ─▶ AI       │     │ realtime → dashboard│
                                                  └───────────────────────────┘     └─────────────────────┘
 ```
 
@@ -60,7 +60,7 @@ Exact duplicates in identical positions are genuinely indistinguishable, and the
 ## Automation
 
 1. **Auto-context** on every comment: screenshot of the area (pin and outline drawn in), selector, Webflow classes, breakpoint, viewport, browser, OS.
-2. **AI triage** (Claude, structured output): vague feedback becomes a task with a title, category, priority, a clarifying question when needed and duplicate detection. It runs in a retrying background job and appears live; nothing changes until a human accepts. If the provider is down or not configured, comments work exactly the same.
+2. **AI triage** (Claude or Gemini, structured output, same prompt and schema): vague feedback becomes a task with a title, category, priority, a clarifying question when needed and duplicate detection. It runs in a retrying background job and appears live; nothing changes until a human accepts. If the provider is down or not configured, comments work exactly the same.
 3. **"Changed since this comment"**: when a team member views a page, the widget compares each commented element with its snapshot (text, image, 20 tracked styles, size) at the same breakpoint and flags likely fixes: "font-size 16px → 20px. Verify & resolve".
 4. **Hand-off to coding agents**: "Copy for AI agent" exports markdown with selector, classes, DOM path, request, task and changes.
 
@@ -79,7 +79,8 @@ node e2e/site/serve.mjs  # demo client site on http://localhost:4000
 
 `apps/web/.env.local` needs `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY` (from `supabase status`), `APP_URL`, `WIDGET_TOKEN_SECRET` (32+ random
-chars), `CRON_SECRET`, and optionally `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`.
+chars), `CRON_SECRET`, and optionally `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` or
+`AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free key from aistudio.google.com).
 
 ## Tests
 
