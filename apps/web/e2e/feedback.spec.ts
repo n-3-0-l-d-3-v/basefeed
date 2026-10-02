@@ -87,6 +87,30 @@ test.describe("team on the dashboard", () => {
       .toBeLessThan(20);
   });
 
+  test("uploads a design image and pins a comment on it", async ({ page }, testInfo) => {
+    const design = testInfo.outputPath("design.png");
+    const shooter = await page.context().newPage();
+    await shooter.goto(SITE);
+    await shooter.screenshot({ path: design });
+    await shooter.close();
+
+    await page.goto(`/p/${PROJECT}`);
+    await page.getByRole("button", { name: "Add page" }).first().click();
+    await page.getByRole("dialog", { name: "Add a page" }).getByRole("button", { name: "Design image" }).click();
+    await page.locator("#ap-file").setInputFiles(design);
+    await page.getByLabel("Name (optional)").fill("Homepage mockup");
+    await page.getByRole("button", { name: "Upload design" }).click();
+
+    const image = page.getByRole("img", { name: "Homepage mockup" });
+    await expect(image).toBeVisible();
+    await image.click({ position: { x: 160, y: 90 } });
+    const text = unique("Logo should be bigger");
+    await page.getByPlaceholder("What should change?").fill(text);
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByRole("article", { name: /Comment \d+/ }).getByText(text).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Comment \d+$/ })).toHaveCount(1);
+  });
+
   test("moves a card on the board and records who did it", async ({ page }) => {
     await page.goto(`/p/${PROJECT}/board`);
     const card = page.getByRole("region", { name: "Open column" }).locator("article").first();
