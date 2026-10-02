@@ -1,7 +1,7 @@
 "use client";
 
 import type { HostToWidget, WidgetToHost } from "@bn/shared";
-import { ExternalLink, FileText, Frame, Laptop, MessageSquarePlus, Monitor, MousePointer2, Plus, RotateCw, Smartphone, Tablet } from "lucide-react";
+import { Check, ExternalLink, FileText, Frame, ImageIcon, Laptop, Link2, Maximize2, MessageSquarePlus, Minus, Monitor, MousePointer2, Plus, RotateCw, Smartphone, Tablet } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { CommentDetail } from "@/components/comment-detail";
@@ -13,10 +13,14 @@ import { needsAttention, useLiveComments } from "@/components/use-live-comments"
 import type { DashboardComment, Member } from "@/lib/data";
 import { ago } from "@/lib/export";
 import { embedUrl, normalizePageUrl, originOf, pathOf } from "@/lib/urls";
-import { addPage, getComment, mintEmbedToken, removePage } from "../../actions";
+import { supabaseBrowser } from "@/lib/supabase/browser";
+import { addImagePage, addPage, getComment, mintEmbedToken, removePage } from "../../actions";
+import { ImageStage } from "./image-stage";
 
 type Project = { id: string; name: string; public_key: string; figma_url: string | null; allowed_origins: string[] };
-type Page = { id: string; url: string; title: string; kind: string };
+type Page = { id: string; url: string; title: string; kind: string; image_path: string | null };
+
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.25, 1.5];
 
 const DEVICES = [
   { id: "desktop", label: "Desktop", w: 1440, icon: Monitor },
@@ -50,8 +54,9 @@ export function Canvas({
   const { comments, patch, remove, upsert } = useLiveComments(project.id, initialComments);
 
   const livePages = pages.filter((p) => p.kind === "live");
-  const pageId = search.get("page") ?? livePages[0]?.id ?? null;
-  const page = livePages.find((p) => p.id === pageId) ?? livePages[0] ?? null;
+  const pageId = search.get("page") ?? pages[0]?.id ?? null;
+  const page = pages.find((p) => p.id === pageId) ?? pages[0] ?? null;
+  const isImage = page?.kind === "image";
 
   const [device, setDevice] = useState<DeviceId>("desktop");
   const [mode, setMode] = useState<"comment" | "browse">("comment");
@@ -64,13 +69,40 @@ export function Canvas({
   const [unlisted, setUnlisted] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
+  const [zoom, setZoom] = useState<number | "fit">("fit");
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const iframe = useRef<HTMLIFrameElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const viewer = useRef<HTMLElement>(null);
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
 
-  const origin = page ? originOf(page.url) : null;
+  const origin = page && !isImage ? originOf(page.url) : null;
   const width = DEVICES.find((d) => d.id === device)!.w;
-  const scale = stageSize.w ? Math.min(1, (stageSize.w - 48) / width) : 1;
+  const fitScale = stageSize.w ? Math.min(1, (stageSize.w - 48) / width) : 1;
+  const scale = zoom === "fit" ? fitScale : zoom;
+
+  const stepZoom = useCallback(
+    (dir: 1 | -1) =>
+      setZoom((z) => {
+        const current = z === "fit" ? fitScale : z;
+        const next = dir > 0 ? ZOOM_STEPS.find((s) => s > current + 0.001) : [...ZOOM_STEPS].reverse().find((s) => s < current - 0.001);
+        return next ?? current;
+      }),
+    [fitScale],
+  );
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void viewer.current?.requestFullscreen?.().catch(() => {});
+  }, []);
+
+  const copyPageLink = async () => {
+    if (!page) return;
+    await navigator.clipboard.writeText(`${window.location.origin}/p/${project.id}?page=${page.id}`);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 1500);
+  };
 
   const selectPage = useCallback(
     (id: string) => {
@@ -150,11 +182,15 @@ export function Canvas({
       const t = e.target as HTMLElement;
       if (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "c") setMode((m) => (m === "comment" ? "browse" : "comment"));
-      if (e.key === "Escape") setSelectedId(null);
+      else if (e.key === "Escape") setSelectedId(null);
+      else if (e.key === "f") toggleFullscreen();
+      else if (e.key === "+" || e.key === "=") stepZoom(1);
+      else if (e.key === "-") stepZoom(-1);
+      else if (e.key === "0") setZoom("fit");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [stepZoom, toggleFullscreen]);
 
   const pageComments = useMemo(() => comments.filter((c) => c.page_id === page?.id), [comments, page?.id]);
   const counts = {
@@ -181,9 +217,11 @@ export function Canvas({
           </IconButton>
         </div>
         <ul className="flex gap-1 overflow-x-auto px-2 pb-2 lg:flex-col lg:overflow-y-auto">
-          {livePages.map((p) => {
+          {pages.map((p) => {
             const n = openByPage.get(p.id) ?? 0;
             const current = p.id === page?.id;
+            const Icon = p.kind === "image" ? ImageIcon : FileText;
+            const sub = p.kind === "image" ? "Uploaded design" : pathOf(p.url);
             return (
               <li key={p.id} className="shrink-0">
                 <button
@@ -195,10 +233,10 @@ export function Canvas({
                     current ? "bg-sunken ring-1 ring-inset ring-line" : "hover:bg-sunken",
                   )}
                 >
-                  <FileText aria-hidden className={cx("size-4 shrink-0", current ? "text-ink" : "text-muted")} />
+                  <Icon aria-hidden className={cx("size-4 shrink-0", current ? "text-ink" : "text-muted")} />
                   <span className="min-w-0 flex-1">
-                    <span className={cx("block truncate text-[13px]", current ? "font-medium text-ink" : "text-ink-2")}>{p.title || pathOf(p.url)}</span>
-                    <span className="block truncate font-mono text-[10px] text-muted">{pathOf(p.url)}</span>
+                    <span className={cx("block truncate text-[13px]", current ? "font-medium text-ink" : "text-ink-2")}>{p.title || sub}</span>
+                    <span className="block truncate font-mono text-[10px] text-muted">{sub}</span>
                   </span>
                   {n > 0 && <span className="tabular grid h-5 min-w-5 place-items-center rounded-full bg-pink px-1.5 text-[11px] font-bold text-plum">{n}</span>}
                 </button>
@@ -221,29 +259,48 @@ export function Canvas({
       </aside>
 
       {/* Live site */}
-      <section className="flex min-h-[460px] min-w-0 flex-1 flex-col overflow-hidden rounded-xl ring-1 ring-line">
+      <section ref={viewer} className="flex min-h-[460px] min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-bg ring-1 ring-line">
         <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
-          <Segmented
-            label="Device width"
-            size="sm"
-            value={device}
-            onChange={setDevice}
-            options={DEVICES.map((d) => ({
-              value: d.id,
-              title: `${d.label} · ${d.w}px`,
-              label: (
-                <>
-                  <d.icon aria-hidden />
-                  <span className="hidden xl:inline">{d.label}</span>
-                  <span className="sr-only xl:hidden">{d.label}</span>
-                </>
-              ),
-            }))}
-          />
-          <span className="tabular font-mono text-[11px] text-muted">
-            {width}px · {Math.round(scale * 100)}%
-          </span>
-          <div className="ml-auto flex items-center gap-2">
+          {!isImage && (
+            <Segmented
+              label="Device width"
+              size="sm"
+              value={device}
+              onChange={(d) => {
+                setDevice(d);
+                setZoom("fit");
+              }}
+              options={DEVICES.map((d) => ({
+                value: d.id,
+                title: `${d.label} · ${d.w}px`,
+                label: (
+                  <>
+                    <d.icon aria-hidden />
+                    <span className="hidden xl:inline">{d.label}</span>
+                    <span className="sr-only xl:hidden">{d.label}</span>
+                  </>
+                ),
+              }))}
+            />
+          )}
+          <div className="flex items-center rounded-[10px] bg-sunken p-0.5 ring-1 ring-inset ring-line" role="group" aria-label="Zoom">
+            <IconButton aria-label="Zoom out (−)" onClick={() => stepZoom(-1)} className="size-7">
+              <Minus />
+            </IconButton>
+            <button
+              type="button"
+              onClick={() => setZoom("fit")}
+              title="Fit to window (0)"
+              className={cx("tabular h-7 min-w-14 rounded-lg px-1.5 font-mono text-[11px]", zoom === "fit" ? "text-muted" : "bg-panel text-ink ring-1 ring-line")}
+            >
+              {isImage ? (zoom === "fit" ? "Fit" : `${Math.round((zoom as number) * 100)}%`) : `${Math.round(scale * 100)}%`}
+            </button>
+            <IconButton aria-label="Zoom in (+)" onClick={() => stepZoom(1)} className="size-7">
+              <Plus />
+            </IconButton>
+          </div>
+          {!isImage && <span className="tabular hidden font-mono text-[11px] text-muted md:inline">{width}px</span>}
+          <div className="ml-auto flex items-center gap-1">
             <Segmented
               label="Mode"
               size="sm"
@@ -257,7 +314,7 @@ export function Canvas({
             <span className="hidden items-center gap-1 text-[11px] text-muted 2xl:flex">
               <Kbd>C</Kbd> to switch
             </span>
-            {page && (
+            {page && !isImage && (
               <a
                 href={`${page.url}?bn_feedback=1`}
                 target="_blank"
@@ -269,6 +326,12 @@ export function Canvas({
                 <ExternalLink />
               </a>
             )}
+            <IconButton aria-label={linkCopied ? "Link copied" : "Copy link to this page"} onClick={() => void copyPageLink()}>
+              {linkCopied ? <Check /> : <Link2 />}
+            </IconButton>
+            <IconButton aria-label="Full screen (F)" onClick={toggleFullscreen}>
+              <Maximize2 />
+            </IconButton>
           </div>
         </div>
 
@@ -293,20 +356,37 @@ export function Canvas({
           </div>
         )}
 
-        <div ref={stage} className="dot-grid relative min-h-0 flex-1 overflow-hidden">
+        <div ref={stage} className={cx("dot-grid relative min-h-0 flex-1", scale > fitScale + 0.001 && !isImage ? "overflow-auto" : "overflow-hidden")}>
           {!page ? (
             <EmptyState title="No pages yet" action={<Button variant="primary" onClick={() => setAddOpen(true)}><Plus aria-hidden />Add page</Button>}>
-              Add the first page of the site to start reviewing it.
+              Add the first page of the site, or upload a design, to start reviewing.
             </EmptyState>
+          ) : isImage ? (
+            <ImageStage
+              key={page.id}
+              projectId={project.id}
+              page={page}
+              comments={pageComments}
+              selectedId={selectedId}
+              mode={mode}
+              zoom={zoom}
+              onCreated={(c) => {
+                upsert(c);
+                setSelectedId(c.id);
+              }}
+              onSelect={setSelectedId}
+            />
           ) : (
-            <div className="absolute inset-x-0 top-5 flex justify-center">
-              <div
-                // shrink-0: the frame must render at the true device width and only be scaled visually,
-                // otherwise "Desktop 1440" silently shows the site's tablet layout.
-                className="origin-top shrink-0 overflow-hidden rounded-xl bg-panel shadow-[var(--shadow-pop)]"
-                style={{ width, height: (stageSize.h - 40) / scale, transform: `scale(${scale})` }}
-              >
-                <iframe
+            <div className="flex min-w-full justify-center px-6 pt-5" style={{ width: Math.max(stageSize.w, width * scale + 48) }}>
+              {/* Layout box at the scaled size (so zoomed-in views scroll correctly); the frame inside renders at
+                  the true device width and is only scaled visually. Otherwise "Desktop 1440" would silently show
+                  the site's tablet layout. */}
+              <div className="relative shrink-0" style={{ width: width * scale, height: Math.max(0, stageSize.h - 40) }}>
+                <div
+                  className="absolute left-0 top-0 origin-top-left overflow-hidden rounded-xl bg-panel shadow-[var(--shadow-pop)]"
+                  style={{ width, height: Math.max(0, stageSize.h - 40) / scale, transform: `scale(${scale})` }}
+                >
+                  <iframe
                   key={`${page.id}:${reload}`}
                   ref={iframe}
                   src={embedUrl(page.url)}
@@ -315,11 +395,12 @@ export function Canvas({
                   // The client site keeps its own origin; it never shares the dashboard's.
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   referrerPolicy="strict-origin-when-cross-origin"
-                />
+                  />
+                </div>
               </div>
             </div>
           )}
-          {page && frame !== "connected" && (
+          {page && !isImage && frame !== "connected" && (
             <FrameStatus state={frame} appUrl={appUrl} publicKey={project.public_key} pageUrl={page.url} onRetry={() => setReload((n) => n + 1)} />
           )}
         </div>
@@ -331,7 +412,7 @@ export function Canvas({
           <CommentDetail
             key={selected.id}
             comment={selected}
-            pageUrl={livePages.find((p) => p.id === selected.page_id)?.url ?? page?.url ?? ""}
+            pageUrl={pages.find((p) => p.id === selected.page_id)?.url ?? page?.url ?? ""}
             members={members}
             onPatch={patch}
             onRemoved={(id) => {
@@ -479,26 +560,75 @@ function AddPageDialog({
   onAdded: (id: string) => void;
   onRemove?: () => void;
 }) {
+  const [kind, setKind] = useState<"live" | "image">("live");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  const uploadImage = async (file: File, title: string) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return setError("Upload a PNG, JPG or WebP image.");
+    if (file.size > 10 * 1024 * 1024) return setError("Images can be up to 10 MB.");
+    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const path = `${projectId}/${crypto.randomUUID()}.${ext}`;
+    // Straight from the browser to private storage; row-level security checks project access.
+    const { error: up } = await supabaseBrowser().storage.from("page-images").upload(path, file, { contentType: file.type });
+    if (up) return setError("Couldn't upload the image. Try again.");
+    const r = await addImagePage(projectId, path, title || file.name.replace(/\.[a-z]+$/i, ""));
+    if (!r.ok) return setError(r.error);
+    setError(null);
+    onAdded(r.data.id);
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} title="Add a page" description="Any page on a connected site.">
+    <Dialog open={open} onClose={onClose} title="Add a page" description="A live page from a connected site, or a design to review.">
+      <div className="mb-4">
+        <Segmented
+          label="Page type"
+          value={kind}
+          onChange={(k) => {
+            setKind(k);
+            setError(null);
+          }}
+          options={[
+            { value: "live", label: (<><FileText aria-hidden />Website</>) },
+            { value: "image", label: (<><ImageIcon aria-hidden />Design image</>) },
+          ]}
+        />
+      </div>
       <form
         className="flex flex-col gap-4"
         action={(form) =>
           start(async () => {
-            const r = await addPage(projectId, String(form.get("url") ?? ""), String(form.get("title") ?? ""));
+            const title = String(form.get("title") ?? "");
+            if (kind === "image") {
+              const file = form.get("file");
+              if (!(file instanceof File) || file.size === 0) return setError("Choose an image to upload.");
+              return uploadImage(file, title);
+            }
+            const r = await addPage(projectId, String(form.get("url") ?? ""), title);
             if (!r.ok) return setError(r.error);
             setError(null);
             onAdded(r.data.id);
           })
         }
       >
-        <Field label="Page URL" htmlFor="ap-url" hint="A new domain is connected to the project automatically.">
-          <Input id="ap-url" name="url" type="url" required placeholder="https://acme.webflow.io/pricing" autoFocus />
-        </Field>
+        {kind === "live" ? (
+          <Field label="Page URL" htmlFor="ap-url" hint="A new domain is connected to the project automatically.">
+            <Input id="ap-url" name="url" type="url" required placeholder="https://acme.webflow.io/pricing" autoFocus />
+          </Field>
+        ) : (
+          <Field label="Design image" htmlFor="ap-file" hint="PNG, JPG or WebP up to 10 MB, e.g. a frame exported from Figma.">
+            <input
+              id="ap-file"
+              name="file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              required
+              className="block w-full text-[13px] file:mr-3 file:h-9 file:rounded-[10px] file:border-0 file:bg-night file:px-3 file:text-[13px] file:font-medium file:text-white hover:file:bg-ink"
+            />
+          </Field>
+        )}
         <Field label="Name (optional)" htmlFor="ap-title">
-          <Input id="ap-title" name="title" maxLength={160} placeholder="Pricing" />
+          <Input id="ap-title" name="title" maxLength={160} placeholder={kind === "live" ? "Pricing" : "Homepage v2 (Figma)"} />
         </Field>
         {error && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
@@ -516,7 +646,7 @@ function AddPageDialog({
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={pending}>
-            {pending ? "Adding…" : "Add page"}
+            {pending ? (kind === "image" ? "Uploading…" : "Adding…") : kind === "image" ? "Upload design" : "Add page"}
           </Button>
         </div>
       </form>
