@@ -87,6 +87,70 @@ test.describe("team on the dashboard", () => {
       .toBeLessThan(20);
   });
 
+  test("a member re-pins a comment whose element was removed, and it stays there", async ({ page }) => {
+    const text = unique("Tighten this heading");
+    await page.setViewportSize({ width: 1600, height: 1400 }); // the whole scaled site fits, widget toolbar included
+    await page.goto(`/p/${PROJECT}`);
+    let site = await siteFrame(page);
+
+    await site.locator(".feature_card").nth(2).locator("h3").click();
+    await site.getByPlaceholder("What should change?").fill(text);
+    await site.getByRole("button", { name: "Send" }).click();
+    const number = /#(\d+)/.exec((await site.getByRole("status").textContent()) ?? "")![1]!;
+
+    // The site is rebuilt: the heading is gone, so the comment is shown as removed rather than guessed.
+    // Hold the widget's "removed" health report until after the re-pin, the order a slow network can produce.
+    let reportSent!: () => void;
+    let release!: () => void;
+    const sent = new Promise<void>((r) => (reportSent = r));
+    const held = new Promise<void>((r) => (release = r));
+    await page.route("**/api/widget/anchor-report", async (route) => {
+      const body = route.request().method() === "POST" ? (route.request().postData() ?? "") : "";
+      if (body.includes('"detached"')) {
+        reportSent();
+        await held;
+      }
+      await route.continue();
+    });
+    const frame = page.frames().find((f) => f.url().startsWith(SITE))!;
+    await frame.evaluate(() => document.querySelectorAll(".feature_card")[2]!.querySelector("h3")!.remove());
+    await sent;
+    await site.getByRole("button", { name: /open$/ }).click();
+    await site.getByRole("dialog", { name: "Comments on this page" }).getByRole("button", { name: new RegExp(text) }).click();
+    const thread = site.getByRole("dialog", { name: `Comment ${number}` });
+    await expect(thread.getByText("Element removed")).toBeVisible();
+
+    await thread.getByRole("button", { name: "Pick the new element" }).click();
+    await expect(site.getByRole("status")).toContainText(`Click the element comment #${number} is about`);
+    await site.locator(".feature_card").nth(2).locator("p").first().click();
+    await expect(site.getByRole("status")).toContainText(`Comment #${number} moved`);
+
+    // The stale report arrives after the move and must not undo it.
+    const stale = page.waitForResponse((r) => r.url().endsWith("/api/widget/anchor-report") && r.request().method() === "POST");
+    release();
+    expect((await stale).status()).toBe(204);
+    await page.unroute("**/api/widget/anchor-report");
+    // The board has no live site to re-check the pin, so it shows exactly what the server stored.
+    await page.goto(`/p/${PROJECT}/board`);
+    await page.locator("article", { hasText: text }).locator("button.text-left").click();
+    const detail = page.getByRole("dialog").getByRole("article", { name: `Comment ${number}` });
+    await expect(detail.getByText(text).first()).toBeVisible();
+    await expect(detail.getByText("Element removed")).toHaveCount(0);
+
+    // And on the site the pin sits on the new element.
+    await page.goto(`/p/${PROJECT}`);
+    site = await siteFrame(page);
+    const target = site.locator(".feature_card").nth(2).locator("p").first();
+    await target.scrollIntoViewIfNeeded();
+    const pin = site.getByRole("button", { name: `Comment ${number}`, exact: true });
+    await expect
+      .poll(async () => {
+        const [p, t] = await Promise.all([pin.boundingBox(), target.boundingBox()]);
+        return p && t ? Math.abs(p.y + p.height / 2 - (t.y + t.height / 2)) : Infinity;
+      })
+      .toBeLessThan(30);
+  });
+
   test("uploads a design image and pins a comment on it", async ({ page }, testInfo) => {
     const design = testInfo.outputPath("design.png");
     const shooter = await page.context().newPage();
