@@ -1,21 +1,32 @@
+import { handleNotify } from "./notify";
 import { supabaseAdmin } from "./supabase/server";
 import { runTriage, triageProvider } from "./triage";
 import { PermanentTriageError } from "./triage/types";
 
-type Kind = "triage";
+export type JobKind = "triage" | "notify";
 
-const handlers: Record<Kind, { run(payload: Record<string, unknown>): Promise<void>; giveUp(payload: Record<string, unknown>): Promise<void> }> = {
+interface Handler {
+  run(payload: Record<string, unknown>): Promise<void>;
+  /** Called once retries are exhausted or the failure is permanent. */
+  giveUp(payload: Record<string, unknown>): Promise<void>;
+}
+
+const handlers: Record<JobKind, Handler> = {
   triage: {
     run: (p) => runTriage(String(p.commentId)),
     giveUp: async (p) => {
       await supabaseAdmin().from("comments").update({ triage_state: "unavailable" }).eq("id", String(p.commentId)).eq("triage_state", "pending");
     },
   },
+  notify: {
+    run: (p) => handleNotify(p as Parameters<typeof handleNotify>[0]),
+    giveUp: async () => {},
+  },
 };
 
 /**
  * Queue AI triage for a new comment. Idempotent per comment. Returns a function that drains the
- * queue (run it after the response is sent); a cron hits /api/jobs/run to retry anything that failed.
+ * queue (run it after the response is sent); a scheduler hits /api/jobs/run to retry failures.
  */
 export async function enqueueTriage(commentId: string): Promise<(() => Promise<void>) | null> {
   const admin = supabaseAdmin();
@@ -26,11 +37,11 @@ export async function enqueueTriage(commentId: string): Promise<(() => Promise<v
   const { error } = await admin.from("jobs").insert({ kind: "triage", payload: { commentId }, idempotency_key: `triage:${commentId}` });
   if (error && error.code !== "23505") throw error;
   return async () => {
-    await runJobs("triage");
+    await drainJobs();
   };
 }
 
-export async function runJobs(kind: Kind, limit = 5): Promise<{ done: number; failed: number }> {
+export async function runJobs(kind: JobKind, limit = 5): Promise<{ done: number; failed: number }> {
   const admin = supabaseAdmin();
   const { data: jobs, error } = await admin.rpc("claim_jobs", { p_kind: kind, p_limit: limit });
   if (error) throw error;
@@ -55,4 +66,10 @@ export async function runJobs(kind: Kind, limit = 5): Promise<{ done: number; fa
     }
   }
   return { done, failed };
+}
+
+/** Process whatever is ready, of every kind. Safe to call often: claiming is atomic. */
+export async function drainJobs(limit = 10) {
+  const [triage, notify] = await Promise.all([runJobs("triage", limit), runJobs("notify", limit)]);
+  return { triage, notify };
 }

@@ -1,7 +1,7 @@
 import { CreateCommentSchema, type Json } from "@bn/shared";
 import { after, NextResponse } from "next/server";
 import { repliesByComment, storeScreenshot, toWidgetComment, WIDGET_COMMENT_COLUMNS } from "@/lib/comments";
-import { enqueueTriage } from "@/lib/jobs";
+import { drainJobs, enqueueTriage } from "@/lib/jobs";
 import { normalizePageUrl, originOf } from "@/lib/urls";
 import { HttpError, preflight, readJson, widgetRoute } from "@/lib/widget/route";
 
@@ -56,8 +56,9 @@ export const POST = widgetRoute(async ({ req, claims, project, admin }) => {
   if (error) throw error;
 
   if (input.screenshot) await storeScreenshot(admin, project.id, row.id, input.screenshot);
-  const triage = await enqueueTriage(row.id);
-  if (triage) after(triage);
+  await enqueueTriage(row.id);
+  // Triage + the team notification (queued by a database trigger) run after the response is sent.
+  after(() => drainJobs());
 
   return NextResponse.json({ comment: toWidgetComment(row, []) }, { status: 201 });
 });

@@ -1,5 +1,6 @@
 import { CreateReplySchema } from "@bn/shared";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { drainJobs } from "@/lib/jobs";
 import { z } from "zod";
 import { HttpError, preflight, readJson, widgetRoute } from "@/lib/widget/route";
 
@@ -24,5 +25,6 @@ export const POST = widgetRoute<{ id: string }>(async ({ req, claims, project, a
     .select("id, author_name, body, created_at")
     .single();
   if (error) throw error;
+  after(() => drainJobs());
   return NextResponse.json({ reply }, { status: 201 });
 });

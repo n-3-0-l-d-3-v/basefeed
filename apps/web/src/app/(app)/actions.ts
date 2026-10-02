@@ -3,11 +3,12 @@
 import { CategorySchema, PrioritySchema, StatusSchema } from "@bn/shared";
 import { createHash, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { COMMENT_COLUMNS, getSession, type DashboardComment } from "@/lib/data";
 import { env } from "@/lib/env";
-import { enqueueTriage } from "@/lib/jobs";
+import { drainJobs, enqueueTriage } from "@/lib/jobs";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { normalizePageUrl, originOf } from "@/lib/urls";
 import { signWidgetToken } from "@/lib/widget/token";
@@ -161,6 +162,7 @@ export async function updateComment(commentId: string, patch: z.input<typeof Pat
   if (!parsed.success || !Id.safeParse(commentId).success) return fail("Invalid change.");
   const { data, error } = await supabase.from("comments").update(parsed.data).eq("id", commentId).select("id");
   if (error || !data?.length) return fail("Couldn't update the comment.");
+  if (parsed.data.assignee_id) after(() => drainJobs());
   return ok(undefined);
 }
 
@@ -209,6 +211,7 @@ export async function replyToComment(commentId: string, body: string): Promise<R
     .select("id, author_name, body, created_at")
     .single();
   if (error) return fail("Couldn't send the reply.");
+  after(() => drainJobs());
   return ok(data);
 }
 
