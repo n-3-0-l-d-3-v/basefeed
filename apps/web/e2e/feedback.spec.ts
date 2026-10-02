@@ -144,6 +144,30 @@ test.describe("clients via share link", () => {
   });
 });
 
+test.describe("team", () => {
+  test("an invited teammate signs up through the link and sees the workspace's projects", async ({ page, browser }) => {
+    await login(page);
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Create invite link" }).first().click();
+    const link = await page.getByLabel("Invite link").inputValue();
+
+    const mateContext = await browser.newContext();
+    const mate = await mateContext.newPage();
+    await mate.goto(link);
+    await expect(mate.getByRole("heading", { name: /Join Demo Designer's workspace/ })).toBeVisible();
+    await mate.getByRole("link", { name: "Create an account to join" }).click();
+    await mate.getByLabel("Name").fill("Tara Teammate");
+    await mate.getByLabel("Email").fill(`tara+${Date.now()}@studio.test`);
+    await mate.getByLabel("Password").fill("correct-horse-42");
+    await mate.getByRole("button", { name: "Create account" }).click();
+    await mate.waitForURL(/\/invite\//);
+    await mate.getByRole("button", { name: "Join workspace" }).click();
+    await mate.waitForURL("http://localhost:3000/");
+    await expect(mate.getByText("Acme (demo site)")).toBeVisible();
+    await mateContext.close();
+  });
+});
+
 test.describe("widget API security", () => {
   test("rejects missing and forged credentials", async ({ request }) => {
     const none = await request.get("/api/widget/me", { headers: { origin: SITE } });
