@@ -64,6 +64,11 @@ export function Canvas({
   modeRef.current = mode;
   const [filter, setFilter] = useState<Filter>("open");
   const [selectedId, setSelectedId] = useState<string | null>(search.get("c"));
+  const linked = search.get("c");
+  // Follow links that point at a comment (search, notifications) even when already on this canvas.
+  useEffect(() => {
+    if (linked) setSelectedId(linked);
+  }, [linked]);
   const [frame, setFrame] = useState<FrameState>("loading");
   const [addOpen, setAddOpen] = useState(false);
   const [unlisted, setUnlisted] = useState<string | null>(null);

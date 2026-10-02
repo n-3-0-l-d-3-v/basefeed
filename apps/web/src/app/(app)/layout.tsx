@@ -1,6 +1,7 @@
 import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/app/(auth)/actions";
+import { CommandPalette, SearchButton } from "@/components/command-palette";
 import { getSession } from "@/lib/data";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-3">
+            <SearchButton />
             <span className="hidden truncate text-[12px] text-white/45 md:inline" title="Workspace">
               {workspaces[0]?.name}
             </span>
@@ -46,6 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <CommandPalette />
     </div>
   );
 }
