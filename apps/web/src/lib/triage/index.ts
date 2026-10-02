@@ -2,6 +2,7 @@ import type { AnchorInput, CommentContext, Json } from "@bn/shared";
 import { env } from "../env";
 import { supabaseAdmin } from "../supabase/server";
 import { AnthropicTriage } from "./anthropic";
+import { GeminiTriage } from "./gemini";
 import type { TriageInput, TriageProvider } from "./types";
 
 let provider: TriageProvider | null | undefined;
@@ -9,7 +10,9 @@ let provider: TriageProvider | null | undefined;
 export function triageProvider(): TriageProvider | null {
   if (provider !== undefined) return provider;
   const e = env();
-  provider = e.AI_PROVIDER === "anthropic" && e.ANTHROPIC_API_KEY ? new AnthropicTriage(e.ANTHROPIC_API_KEY, e.AI_MODEL) : null;
+  if (e.AI_PROVIDER === "anthropic" && e.ANTHROPIC_API_KEY) provider = new AnthropicTriage(e.ANTHROPIC_API_KEY, e.AI_MODEL || undefined);
+  else if (e.AI_PROVIDER === "gemini" && e.GEMINI_API_KEY) provider = new GeminiTriage(e.GEMINI_API_KEY, e.AI_MODEL || undefined);
+  else provider = null;
   return provider;
 }
 
