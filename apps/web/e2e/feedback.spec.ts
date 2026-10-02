@@ -111,6 +111,16 @@ test.describe("team on the dashboard", () => {
     await expect(page.getByRole("button", { name: /^Comment \d+$/ })).toHaveCount(1);
   });
 
+  test("Ctrl+K finds a comment by its text and opens it", async ({ page }) => {
+    await page.goto("/");
+    await page.keyboard.press("Control+k");
+    const box = page.getByRole("combobox", { name: "Search" });
+    await box.fill("Logo should be bigger");
+    await expect(page.getByRole("option").first()).toContainText("Logo should be bigger");
+    await box.press("Enter");
+    await expect(page.getByRole("article", { name: /Comment \d+/ })).toContainText("Logo should be bigger");
+  });
+
   test("moves a card on the board and records who did it", async ({ page }) => {
     await page.goto(`/p/${PROJECT}/board`);
     const card = page.getByRole("region", { name: "Open column" }).locator("article").first();
