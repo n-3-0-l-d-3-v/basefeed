@@ -48,6 +48,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"api_tokens": {
+                  Row: {
+                    "created_at": string,"id": string,"last_used_at": string | null,"name": string,"prefix": string,"revoked_at": string | null,"token_hash": string,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"last_used_at"?: string | null,"name": string,"prefix": string,"revoked_at"?: string | null,"token_hash": string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"last_used_at"?: string | null,"name"?: string,"prefix"?: string,"revoked_at"?: string | null,"token_hash"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"attachments": {
+                  Row: {
+                    "comment_id": string,"created_at": string,"created_by": string | null,"id": string,"mime": string,"name": string,"path": string,"project_id": string,"size": number
+                  }
+                  Insert: {
+                    "comment_id": string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"mime": string,"name": string,"path": string,"project_id": string,"size": number
+                  }
+                  Update: {
+                    "comment_id"?: string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"mime"?: string,"name"?: string,"path"?: string,"project_id"?: string,"size"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "attachments_comment_id_fkey"
+      columns: ["comment_id"]
+isOneToOne: false
+      referencedRelation: "comments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "attachments_project_id_fkey"
+      columns: ["project_id"]
+isOneToOne: false
+      referencedRelation: "projects"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"comments": {
                   Row: {
                     "anchor": Json | null,"anchor_state": string,"assignee_id": string | null,"author_guest_id": string | null,"author_name": string,"author_user_id": string | null,"body": string,"category": string | null,"change_summary": Json | null,"checked_at": string | null,"context": NonNullable<Json>,"created_at": string,"id": string,"number": number,"page_id": string,"pin": Json | null,"priority": Database["public"]['Enums']["comment_priority"],"project_id": string,"resolved_at": string | null,"screenshot_path": string | null,"snapshot": Json | null,"status": Database["public"]['Enums']["comment_status"],"title": string | null,"triage": Json | null,"triage_state": string,"updated_at": string
@@ -107,6 +145,19 @@ isOneToOne: false
                   }
                   Update: {
                     "attempts"?: number,"created_at"?: string,"id"?: never,"idempotency_key"?: string | null,"kind"?: string,"last_error"?: string | null,"locked_at"?: string | null,"max_attempts"?: number,"payload"?: NonNullable<Json>,"run_after"?: string,"status"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"notification_prefs": {
+                  Row: {
+                    "assignments": boolean,"new_comments": boolean,"replies": boolean,"updated_at": string,"user_id": string
+                  }
+                  Insert: {
+                    "assignments"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "assignments"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     
@@ -282,7 +333,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "can_access_project":
+            "accept_invite":
+{ Args: { "p_token_hash": string }; Returns: string
+                           },
+"can_access_project":
 { Args: { "p": string }; Returns: boolean
                            },
 "claim_jobs":
@@ -314,6 +368,11 @@ isOneToOne: false
                            },
 "hit_rate_limit":
 { Args: { "p_bucket": string,"p_limit": number,"p_window_seconds": number }; Returns: boolean
+                           },
+"invite_preview":
+{ Args: { "p_token_hash": string }; Returns: {
+              "role": Database["public"]['Enums']["member_role"],"workspace_name": string
+            }[]
                            },
 "is_member":
 { Args: { "ws": string }; Returns: boolean
