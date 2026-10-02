@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(19);
 
 -- Two independent agencies.
 insert into auth.users (id, email, raw_user_meta_data, aud, role)
@@ -76,6 +76,21 @@ select public.update_comment_as(
 select is(
   (select actor_name from public.activity where action = 'comment.status' order by id desc limit 1),
   'Alice', 'server-side updates made for a widget user are attributed to that user');
+
+-- Re-pinning from the widget: a member pointed at the element, so it is attached, and the move is logged.
+update public.comments set anchor_state = 'detached' where project_id = '10000000-0000-0000-0000-000000000001' and number = 2;
+select public.update_comment_as(
+  (select id from public.comments where project_id = '10000000-0000-0000-0000-000000000001' and number = 2), '10000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-00000000000a', 'Alice', '{"anchor":{"v":1,"selector":"h1.hero"}}');
+select is(
+  (select anchor ->> 'selector' from public.comments where project_id = '10000000-0000-0000-0000-000000000001' and number = 2),
+  'h1.hero', 're-pinning stores the new anchor');
+select is(
+  (select anchor_state from public.comments where project_id = '10000000-0000-0000-0000-000000000001' and number = 2),
+  'attached', 'a re-pinned comment is attached');
+select is(
+  (select actor_name || ' from ' || (meta ->> 'from') from public.activity where action = 'comment.repinned' order by id desc limit 1),
+  'Alice from detached', 're-pinning is logged with who did it and what state it came from');
 
 select * from finish();
 rollback;
