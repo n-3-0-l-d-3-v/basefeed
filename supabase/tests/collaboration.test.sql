@@ -35,14 +35,15 @@ select is((select count(*)::int from public.jobs where idempotency_key = 'notify
   'a new comment queues exactly one notification');
 
 update public.comments set assignee_id = '00000000-0000-0000-0000-0000000000a1' where id = '30000000-0000-0000-0000-0000000000a1';
-select is((select count(*)::int from public.jobs where payload ->> 'event' = 'comment.assigned'), 1, 'assigning someone queues a notification');
+select is((select count(*)::int from public.jobs where payload ->> 'event' = 'comment.assigned' and payload ->> 'comment_id' = '30000000-0000-0000-0000-0000000000a1'), 1, 'assigning someone queues a notification');
 
 update public.comments set body = 'Hero image is blurry on retina' where id = '30000000-0000-0000-0000-0000000000a1';
-select is((select count(*)::int from public.jobs where payload ->> 'event' = 'comment.assigned'), 1, 'unrelated edits do not re-notify the assignee');
+select is((select count(*)::int from public.jobs where payload ->> 'event' = 'comment.assigned' and payload ->> 'comment_id' = '30000000-0000-0000-0000-0000000000a1'), 1, 'unrelated edits do not re-notify the assignee');
 
 insert into public.replies (comment_id, project_id, author_user_id, author_name, body)
 values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a1', 'Ana', 'On it');
-select is((select count(*)::int from public.jobs where payload ->> 'event' = 'reply.created'), 1, 'a reply queues a notification');
+select is((select count(*)::int from public.jobs where payload ->> 'event' = 'reply.created'
+  and payload ->> 'reply_id' in (select id::text from public.replies where comment_id = '30000000-0000-0000-0000-0000000000a1')), 1, 'a reply queues a notification');
 
 -- Ben, from another workspace.
 set local role authenticated;
