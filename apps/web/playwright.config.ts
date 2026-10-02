@@ -18,7 +18,10 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1600, height: 1000 } } }],
   webServer: [
-    { command: "pnpm dev", url: "http://localhost:3000/login", reuseExistingServer: true, timeout: 120_000 },
+    // CI tests the production build (and so also proves it builds); locally, reuse the dev server.
+    process.env.CI
+      ? { command: "pnpm build && pnpm start", url: "http://localhost:3000/login", timeout: 300_000 }
+      : { command: "pnpm dev", url: "http://localhost:3000/login", reuseExistingServer: true, timeout: 120_000 },
     { command: "node ../../e2e/site/serve.mjs", url: "http://localhost:4000", reuseExistingServer: true },
   ],
 });

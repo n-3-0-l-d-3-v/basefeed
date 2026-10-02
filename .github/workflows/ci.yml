@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck and anchoring tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # Unit + property tests: the "never attaches to a different element" guarantee.
+      - run: pnpm --filter @bn/anchor test
+
+  e2e:
+    name: Database and end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Start Supabase
+        run: npx supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta
+
+      - name: Database tests (row-level security, triggers, job queue)
+        run: npx supabase test db
+
+      - name: Configure the app against local Supabase
+        run: |
+          eval "$(npx supabase status -o env)"
+          cat > apps/web/.env.local <<EOF
+          NEXT_PUBLIC_SUPABASE_URL=$API_URL
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+          APP_URL=http://localhost:3000
+          WIDGET_TOKEN_SECRET=$(openssl rand -hex 32)
+          CRON_SECRET=$(openssl rand -hex 32)
+          AI_PROVIDER=none
+          MAILPIT_URL=$MAILPIT_URL
+          EOF
+
+      - run: pnpm --filter @bn/widget build
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: End-to-end tests (production build, two origins)
+        run: pnpm --filter web exec playwright test
+        env:
+          CI: "true"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7
