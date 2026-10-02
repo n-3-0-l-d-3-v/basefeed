@@ -7,9 +7,14 @@ const schema = z.object({
   APP_URL: z.url(),
   WIDGET_TOKEN_SECRET: z.string().min(32, "WIDGET_TOKEN_SECRET must be at least 32 characters"),
   CRON_SECRET: z.string().min(16),
-  AI_PROVIDER: z.enum(["anthropic", "none"]).default("none"),
+  AI_PROVIDER: z.enum(["anthropic", "gemini", "none"]).default("none"),
   AI_MODEL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("Basenine Feedback <onboarding@resend.dev>"),
+  /** Local development: deliver email to Supabase's Mailpit instead of a real provider. */
+  MAILPIT_URL: z.url().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
