@@ -66,12 +66,12 @@ select throws_ok(
 
 update public.comments set status = 'open' where project_id = '10000000-0000-0000-0000-000000000001';
 reset role;
-select is((select status::text from public.comments where number = 1), 'resolved', 'Bob''s update silently matched nothing');
+select is((select status::text from public.comments where project_id = '10000000-0000-0000-0000-000000000001' and number = 1), 'resolved', 'Bob''s update silently matched nothing');
 
 -- What the server's service-role client looks like: no user in the JWT.
 set local request.jwt.claims = '{"role":"service_role"}';
 select public.update_comment_as(
-  (select id from public.comments where number = 2), '10000000-0000-0000-0000-000000000001',
+  (select id from public.comments where project_id = '10000000-0000-0000-0000-000000000001' and number = 2), '10000000-0000-0000-0000-000000000001',
   '00000000-0000-0000-0000-00000000000a', 'Alice', '{"status":"in_progress"}');
 select is(
   (select actor_name from public.activity where action = 'comment.status' order by id desc limit 1),
