@@ -64,6 +64,18 @@ Exact duplicates in identical positions are genuinely indistinguishable, and the
 3. **"Changed since this comment"**: when a team member views a page, the widget compares each commented element with its snapshot (text, image, 20 tracked styles, size) at the same breakpoint and flags likely fixes: "font-size 16px → 20px. Verify & resolve".
 4. **Hand-off to coding agents**: "Copy for AI agent" exports markdown with selector, classes, DOM path, request, task and changes.
 
+## API and MCP (for coding agents)
+
+Personal tokens (Account → API tokens, stored only as a SHA-256 hash, revocable) give agents the
+same access their owner has, scoped to the workspaces they belong to today.
+
+- **MCP** (Streamable HTTP, stateless): `claude mcp add --transport http basenine-feedback https://YOUR-APP/api/mcp --header "Authorization: Bearer bnf_…"`.
+  Tools: `list_feedback`, `get_feedback` (selector, Webflow classes, request, AI task, changes since, thread), `reply`, `set_status`.
+- **REST v1**: `GET /api/v1/feedback?status=unresolved&project=…`, `GET /api/v1/feedback/:id`,
+  `PATCH /api/v1/feedback/:id {"status"}`, `POST /api/v1/feedback/:id/replies {"body"}`.
+
+Both run through one service layer; changes are logged under the token owner's name, and replies notify the team.
+
 ## Run locally
 
 Requires Node 22, pnpm, Docker.
