@@ -11,7 +11,7 @@ function authorized(req: NextRequest): boolean {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
-/** Called every minute by Vercel Cron (which sends CRON_SECRET as a bearer token) to retry queued and stalled jobs. */
+/** Called by the database's pg_cron ticker (with CRON_SECRET as a bearer token) when queued or stalled jobs are ready. */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return NextResponse.json(await drainJobs(20));
