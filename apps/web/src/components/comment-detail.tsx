@@ -34,6 +34,7 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   "comment.status": (m) => `moved it from ${String(m.from).replace("_", " ")} to ${String(m.to).replace("_", " ")}`,
   "comment.priority": (m) => `changed priority from ${m.from} to ${m.to}`,
   "comment.assignee": (m) => (m.to ? "reassigned it" : "unassigned it"),
+  "comment.repinned": () => "moved the pin to the right element",
   "triage.accepted": () => "accepted the AI suggestion",
   "triage.dismissed": () => "dismissed the AI suggestion",
 };

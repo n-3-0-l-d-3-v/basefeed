@@ -37,6 +37,8 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
   const [openId, setOpenId] = useState<string | null>(null);
   const [panel, setPanel] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Member is choosing the element a changed/removed comment belongs to.
+  const [repin, setRepin] = useState<WidgetComment | null>(null);
   const tracker = useMemo(() => new Tracker(setPlaced), []);
   const page = useRef(pageKey());
 
@@ -137,7 +139,23 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
     p?.element?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const moveTo = useCallback(
+    async (c: WidgetComment, el: Element, point: { x: number; y: number }) => {
+      const anchor = capture(el, point, new DocIndex(document));
+      await api.repin(c.id, anchor);
+      setComments((list) => list.map((x) => (x.id === c.id ? { ...x, anchor, anchor_state: "attached" } : x)));
+      setRepin(null);
+      setOpenId(c.id);
+      flash(`Comment #${c.number} moved`);
+    },
+    [api, flash],
+  );
+
   const onPick = useCallback((el: Element, point: { x: number; y: number }) => {
+    if (repin) {
+      moveTo(repin, el, point).catch((e: unknown) => flash(e instanceof Error ? e.message : "Couldn't move the comment."));
+      return;
+    }
     const anchor = capture(el, point, new DocIndex(document));
     setOpenId(null);
     setPanel(false);
@@ -150,9 +168,9 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
       point,
       shot: captureScreenshot(el, anchor.offset),
     });
-  }, []);
+  }, [repin, moveTo, flash]);
 
-  const picking = phase.k === "ready" && mode === "comment" && !draft;
+  const picking = phase.k === "ready" && !draft && (mode === "comment" || repin !== null);
   const hover = usePicker(picking, host, onPick);
   useViewportTick(phase.k === "ready");
 
@@ -162,7 +180,8 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
       if (e.key === "c" || e.key === "C") {
         setMode((m) => (m === "comment" ? "browse" : "comment"));
       } else if (e.key === "Escape") {
-        if (draft) setDraft(null);
+        if (repin) setRepin(null);
+        else if (draft) setDraft(null);
         else if (openId) setOpenId(null);
         else if (panel) setPanel(false);
         else setMode("browse");
@@ -170,7 +189,7 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [phase.k, draft, openId, panel]);
+  }, [phase.k, repin, draft, openId, panel]);
 
   const submit = async (body: string, priority: Priority) => {
     if (!draft) return;
@@ -223,7 +242,18 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
       ))}
       {draft && <Composer draft={draft} onCancel={() => setDraft(null)} onSubmit={submit} />}
       {open && !draft && (
-        <Thread placed={open} me={me!} onClose={() => setOpenId(null)} onStatus={setStatus} onReply={reply} />
+        <Thread
+          placed={open}
+          me={me!}
+          onClose={() => setOpenId(null)}
+          onStatus={setStatus}
+          onReply={reply}
+          onConfirm={(el, point) => moveTo(open.comment, el, point)}
+          onRepick={() => {
+            setRepin(open.comment);
+            setOpenId(null);
+          }}
+        />
       )}
       {panel && (
         <Panel
@@ -259,7 +289,13 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
           </>
         )}
       </div>
-      {toast && (
+      {repin ? (
+        <div class="toast ui" role="status">
+          <i aria-hidden="true" class="pink" />
+          Click the element comment #{repin.number} is about
+          <button onClick={() => setRepin(null)}>Cancel</button>
+        </div>
+      ) : toast && (
         <div class="toast ui" role="status">
           <i aria-hidden="true" />
           {toast}
@@ -389,12 +425,16 @@ function Thread({
   onClose,
   onStatus,
   onReply,
+  onConfirm,
+  onRepick,
 }: {
   placed: Placed;
   me: WidgetMe;
   onClose: () => void;
   onStatus: (id: string, s: Status) => Promise<void>;
   onReply: (id: string, body: string) => Promise<void>;
+  onConfirm: (el: Element, point: { x: number; y: number }) => Promise<void>;
+  onRepick: () => void;
 }) {
   const { comment, element, resolution } = placed;
   const [text, setText] = useState("");
@@ -426,14 +466,32 @@ function Thread({
         </button>
       </header>
       <div class="body">
-        {resolution?.status === "suggested" && (
+        {element && resolution?.status === "suggested" && (
           <div class="notice">
             <b>Element changed</b>This changed or moved since the comment. The pin shows the closest match.
+            {me.canModerate && (
+              <div class="acts">
+                <button class="btn sm" disabled={busy} onClick={() => void act(() => onConfirm(element, point))}>
+                  <IconCheck />
+                  Confirm match
+                </button>
+                <button class="btn sm" disabled={busy} onClick={onRepick}>
+                  Pick element
+                </button>
+              </div>
+            )}
           </div>
         )}
         {!element && (
           <div class="notice">
             <b>Element removed</b>What this comment was on is no longer on this page.
+            {me.canModerate && (
+              <div class="acts">
+                <button class="btn sm" disabled={busy} onClick={onRepick}>
+                  Pick the new element
+                </button>
+              </div>
+            )}
           </div>
         )}
         {comment.status !== "resolved" && changes.length > 0 && (

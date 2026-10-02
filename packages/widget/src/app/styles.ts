@@ -87,6 +87,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(150,255,12
 .btn.primary:hover { filter: brightness(.96); }
 .btn.dark { background: var(--night); color: #fff; box-shadow: none; }
 .btn:disabled { opacity: .45; cursor: default; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
 .spacer { flex: 1; }
 .hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .meta { color: var(--muted); font-size: 12px; }
@@ -106,6 +107,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(150,255,12
 .notice b { color: var(--pink-deep); font-weight: 500; display: block; }
 .notice.info { background: var(--info-soft); }
 .notice.info b { color: var(--info); }
+.notice .acts { display: flex; gap: 6px; margin-top: 8px; }
 .notice ul { margin: 6px 0 0; padding-left: 16px; font: 11px/1.6 var(--mono); color: var(--muted); }
 
 .panel { position: fixed; right: 16px; bottom: 70px; width: 340px; max-height: min(70vh, 640px); }
@@ -123,6 +125,8 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(150,255,12
 
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: var(--night); color: #fff; border-radius: 12px; padding: 10px 14px; font-size: 13px; box-shadow: var(--shadow); }
 .toast i { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); }
+.toast i.pink { background: var(--pink); }
+.toast button { border: 0; background: none; color: var(--pink); font: inherit; font-weight: 500; padding: 0 0 0 4px; text-decoration: underline; text-underline-offset: 2px; }
 .signin { position: fixed; right: 16px; bottom: 16px; width: 320px; }
 .brandline { display: flex; align-items: baseline; gap: 6px; }
 .brandline strong { font: 700 13px/1 var(--sans); letter-spacing: -.01em; }

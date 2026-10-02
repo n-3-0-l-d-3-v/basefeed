@@ -1,3 +1,4 @@
+import type { Anchor } from "@bn/anchor";
 import type { AnchorReport, CreateCommentInput, Status, WidgetComment, WidgetMe, WidgetReply } from "@bn/shared";
 
 export class ApiError extends Error {
@@ -60,6 +61,10 @@ export class Api {
 
   setStatus(id: string, status: Status) {
     return this.req<void>("PATCH", `/comments/${id}`, { status });
+  }
+
+  repin(id: string, anchor: Anchor) {
+    return this.req<void>("PATCH", `/comments/${id}`, { anchor });
   }
 
   report(reports: AnchorReport["reports"]) {
