@@ -44,6 +44,7 @@ export type DashboardComment = {
   author_guest_id: string | null;
   assignee_id: string | null;
   anchor: AnchorInput | null;
+  pin: { x: number; y: number } | null;
   context: Partial<CommentContext>;
   screenshot_path: string | null;
   anchor_state: "attached" | "suggested" | "detached" | "unknown";
@@ -56,7 +57,7 @@ export type DashboardComment = {
 };
 
 export const COMMENT_COLUMNS =
-  "id, number, page_id, body, title, category, status, priority, author_name, author_user_id, author_guest_id, assignee_id, anchor, context, screenshot_path, anchor_state, change_summary, triage, triage_state, created_at, updated_at, resolved_at";
+  "id, number, page_id, body, title, category, status, priority, author_name, author_user_id, author_guest_id, assignee_id, anchor, pin, context, screenshot_path, anchor_state, change_summary, triage, triage_state, created_at, updated_at, resolved_at";
 
 export async function getProjectComments(projectId: string): Promise<DashboardComment[]> {
   const { supabase } = await getSession();

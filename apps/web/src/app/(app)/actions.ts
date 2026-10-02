@@ -106,6 +106,57 @@ export async function addPage(projectId: string, rawUrl: string, title: string):
   return ok(data);
 }
 
+/** The browser uploads straight to private storage (RLS-checked); this records the page. */
+export async function addImagePage(projectId: string, path: string, title: string): Promise<Result<{ id: string }>> {
+  const ctx = await projectFor(projectId);
+  if (!ctx) return fail("Project not found.");
+  if (!new RegExp(`^${projectId}/[0-9a-f-]{36}\\.(png|jpe?g|webp)$`).test(path)) return fail("Upload the image first.");
+  const { data, error } = await ctx.supabase
+    .from("pages")
+    .insert({ project_id: projectId, kind: "image", url: `image:${path}`, image_path: path, title: title.trim().slice(0, 160) || "Design" })
+    .select("id")
+    .single();
+  if (error) return fail("Couldn't add the image.");
+  revalidatePath(`/p/${projectId}`);
+  return ok(data);
+}
+
+export async function imageUrl(path: string): Promise<string | null> {
+  const { supabase } = await getSession();
+  const { data } = await supabase.storage.from("page-images").createSignedUrl(path, 3600);
+  return data?.signedUrl ?? null;
+}
+
+const ImageComment = z.object({
+  body: z.string().trim().min(1).max(5000),
+  priority: PrioritySchema,
+  pin: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+});
+
+export async function createImageComment(projectId: string, pageId: string, input: z.input<typeof ImageComment>): Promise<Result<DashboardComment>> {
+  const ctx = await projectFor(projectId);
+  const parsed = ImageComment.safeParse(input);
+  if (!ctx || !parsed.success || !Id.safeParse(pageId).success) return fail("Write a comment first.");
+  const { data, error } = await ctx.supabase
+    .from("comments")
+    .insert({
+      project_id: projectId,
+      page_id: pageId,
+      author_user_id: ctx.user.id,
+      author_name: ctx.profile.name || "Team",
+      body: parsed.data.body,
+      priority: parsed.data.priority,
+      pin: parsed.data.pin,
+      context: { kind: "image" },
+    })
+    .select(COMMENT_COLUMNS)
+    .single();
+  if (error) return fail("Couldn't save the comment.");
+  await enqueueTriage(data.id);
+  after(() => drainJobs());
+  return ok(data as unknown as DashboardComment);
+}
+
 export async function removePage(projectId: string, pageId: string): Promise<Result> {
   const ctx = await projectFor(projectId);
   if (!ctx || !Id.safeParse(pageId).success) return fail("Page not found.");
