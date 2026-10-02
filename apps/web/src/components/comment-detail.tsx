@@ -1,16 +1,33 @@
 "use client";
 
-import { Check, Copy, ExternalLink, RotateCw, Sparkles, Trash2, X } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
-import { applyTriage, deleteComment, getThread, replyToComment, retryTriage, updateComment } from "@/app/(app)/actions";
+import { Check, Copy, ExternalLink, FileText, Paperclip, RotateCw, Sparkles, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  addAttachment,
+  applyTriage,
+  deleteAttachment,
+  deleteComment,
+  getThread,
+  replyToComment,
+  retryTriage,
+  updateComment,
+  type Attachment,
+} from "@/app/(app)/actions";
 import type { DashboardComment, Member } from "@/lib/data";
 import { ago, commentToMarkdown } from "@/lib/export";
+import { supabaseBrowser } from "@/lib/supabase/browser";
+import { EmojiInsert } from "./emoji-insert";
 import { Pin } from "./pin";
+import { Linkified, LoomEmbeds } from "./rich-text";
 import { Badge, Button, cx, IconButton, PRIORITY_TONE, Select, STATUS_LABEL, Textarea } from "./ui";
 
 type Thread = Awaited<ReturnType<typeof getThread>>;
 
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+// Mirrors the storage bucket's allowed types and 10 MB limit, so people get a clear message up front.
+const ATTACH_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf" };
+const MAX_ATTACH = 10 * 1024 * 1024;
 
 const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   "comment.created": () => "left the comment",
@@ -40,7 +57,10 @@ export function CommentDetail({
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [uploading, setUploading] = useState(0);
   const [pending, start] = useTransition();
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let live = true;
@@ -75,6 +95,41 @@ export function CommentDetail({
       setThread((t) => (t ? { ...t, replies: [...t.replies, r.data] } : t));
     });
   };
+
+  const attach = async (files: File[]) => {
+    const projectId = thread?.projectId;
+    if (!projectId) return;
+    setError(null);
+    for (const file of files) {
+      const ext = ATTACH_EXT[file.type];
+      if (!ext) {
+        setError("Attach images (PNG, JPG, WebP, GIF) or PDFs.");
+        continue;
+      }
+      if (file.size > MAX_ATTACH) {
+        setError(`${file.name} is over 10 MB.`);
+        continue;
+      }
+      setUploading((n) => n + 1);
+      const path = `${projectId}/${c.id}/${crypto.randomUUID()}.${ext}`;
+      // Straight from the browser to private storage; row-level security checks project access.
+      const { error: up } = await supabaseBrowser().storage.from("attachments").upload(path, file, { contentType: file.type });
+      const r = up ? null : await addAttachment(c.id, path, file.name);
+      setUploading((n) => n - 1);
+      if (!r?.ok) {
+        setError(r?.error ?? `Couldn't upload ${file.name}. Try again.`);
+        continue;
+      }
+      setThread((t) => (t ? { ...t, attachments: [...t.attachments, r.data] } : t));
+    }
+  };
+
+  const removeAttachment = (id: string) =>
+    start(async () => {
+      const r = await deleteAttachment(id);
+      if (!r.ok) return setError(r.error);
+      setThread((t) => (t ? { ...t, attachments: t.attachments.filter((a) => a.id !== id) } : t));
+    });
 
   const changes = c.change_summary?.changes ?? [];
   const pinState = c.status === "resolved" ? "resolved" : c.anchor_state === "detached" || c.anchor_state === "suggested" ? "changed" : "open";
@@ -202,7 +257,10 @@ export function CommentDetail({
 
         <figure className="flex flex-col gap-2">
           <figcaption className="eyebrow">What they wrote</figcaption>
-          <blockquote className="whitespace-pre-wrap rounded-lg border-l-[3px] border-pink bg-pink-soft/60 px-3 py-2.5 text-[14px] leading-relaxed">{c.body}</blockquote>
+          <blockquote className="whitespace-pre-wrap rounded-lg border-l-[3px] border-pink bg-pink-soft/60 px-3 py-2.5 text-[14px] leading-relaxed">
+            <Linkified text={c.body} />
+          </blockquote>
+          <LoomEmbeds text={c.body} />
         </figure>
 
         {thread?.screenshotUrl && (
@@ -210,6 +268,18 @@ export function CommentDetail({
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL from private storage */}
             <img src={thread.screenshotUrl} alt={`Screenshot attached to comment ${c.number}`} className="max-h-72 w-full bg-sunken object-contain" />
           </a>
+        )}
+
+        {thread && (thread.attachments.length > 0 || uploading > 0) && (
+          <section aria-label="Files" className="flex flex-col gap-2">
+            <h3 className="eyebrow">Files</h3>
+            <ul className="grid grid-cols-3 gap-2">
+              {thread.attachments.map((a) => (
+                <AttachmentTile key={a.id} file={a} onRemove={a.mine ? () => removeAttachment(a.id) : undefined} />
+              ))}
+              {uploading > 0 && <li className="grid aspect-square place-items-center rounded-lg bg-sunken text-[12px] text-muted ring-1 ring-line">Uploading…</li>}
+            </ul>
+          </section>
         )}
 
         <dl className="grid grid-cols-[76px_1fr] gap-x-3 gap-y-2.5 text-[13px]">
@@ -268,23 +338,53 @@ export function CommentDetail({
                 <p className="text-[12px]">
                   <span className="font-medium">{r.author_name}</span> <span className="text-muted">· {ago(r.created_at)}</span>
                 </p>
-                <p className="mt-0.5 whitespace-pre-wrap leading-relaxed">{r.body}</p>
+                <p className="mt-0.5 whitespace-pre-wrap leading-relaxed">
+                  <Linkified text={r.body} />
+                </p>
+                <div className="mt-2 flex flex-col gap-2 empty:hidden">
+                  <LoomEmbeds text={r.body} />
+                </div>
               </div>
             ))
           )}
           <Textarea
+            ref={replyRef}
             aria-label="Reply"
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply();
             }}
+            onPaste={(e) => {
+              // Pasted screenshots become attachments instead of being lost.
+              const files = [...e.clipboardData.files];
+              if (!files.length) return;
+              e.preventDefault();
+              void attach(files);
+            }}
             placeholder="Write a reply… (Ctrl/⌘ + Enter to send)"
             className="min-h-16"
             maxLength={5000}
           />
-          <div className="flex justify-end">
-            <Button size="sm" variant="dark" disabled={pending || !reply.trim()} onClick={sendReply}>
+          <div className="flex items-center gap-0.5">
+            <EmojiInsert target={replyRef} value={reply} onChange={setReply} />
+            <IconButton aria-label="Attach files" disabled={!thread?.projectId} onClick={() => fileRef.current?.click()}>
+              <Paperclip />
+            </IconButton>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              disabled={!thread?.projectId}
+              accept={Object.keys(ATTACH_EXT).join(",")}
+              aria-label="Files to attach"
+              onChange={(e) => {
+                void attach([...(e.target.files ?? [])]);
+                e.target.value = "";
+              }}
+            />
+            <Button className="ml-auto" size="sm" variant="dark" disabled={pending || !reply.trim()} onClick={sendReply}>
               Reply
             </Button>
           </div>
@@ -344,6 +444,41 @@ export function CommentDetail({
         </IconButton>
       </footer>
     </article>
+  );
+}
+
+function AttachmentTile({ file, onRemove }: { file: Attachment; onRemove?: () => void }) {
+  const size = file.size < 1024 * 1024 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  return (
+    <li className="group relative">
+      <a
+        href={file.url ?? undefined}
+        target="_blank"
+        rel="noreferrer"
+        title={`${file.name} · ${size}`}
+        className="block aspect-square overflow-hidden rounded-lg bg-sunken ring-1 ring-line transition-shadow hover:shadow-[var(--shadow-soft)]"
+      >
+        {file.mime.startsWith("image/") && file.url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL from private storage
+          <img src={file.url} alt={file.name} className="size-full object-cover" />
+        ) : (
+          <span className="flex size-full flex-col items-center justify-center gap-1 p-2 text-center">
+            <FileText aria-hidden className="size-6 text-muted" />
+            <span className="line-clamp-2 break-all text-[11px] leading-tight">{file.name}</span>
+            <span className="text-[10px] text-muted">{size}</span>
+          </span>
+        )}
+      </a>
+      {onRemove && (
+        <IconButton
+          aria-label={`Remove ${file.name}`}
+          onClick={onRemove}
+          className="absolute right-1 top-1 size-6 bg-panel/90 opacity-0 shadow-sm group-hover:opacity-100 focus-visible:opacity-100 [&_svg]:size-3.5"
+        >
+          <X />
+        </IconButton>
+      )}
+    </li>
   );
 }
 

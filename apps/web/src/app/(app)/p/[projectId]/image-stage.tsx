@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { EmojiInsert } from "@/components/emoji-insert";
 import { cx, IconButton, Textarea } from "@/components/ui";
 import type { DashboardComment } from "@/lib/data";
 import { createImageComment, imageUrl } from "../../actions";
@@ -32,6 +33,7 @@ export function ImageStage({
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [body, setBody] = useState("");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("medium");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,11 +123,13 @@ export function ImageStage({
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <span className="eyebrow">New comment on the design</span>
+                    <EmojiInsert target={bodyRef} value={body} onChange={setBody} className="ml-auto" />
                     <IconButton aria-label="Cancel" onClick={() => setDraft(null)} className="size-7">
                       <X />
                     </IconButton>
                   </div>
                   <Textarea
+                    ref={bodyRef}
                     autoFocus
                     value={body}
                     onChange={(e) => setBody(e.target.value)}

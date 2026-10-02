@@ -275,19 +275,58 @@ export async function getComment(commentId: string): Promise<DashboardComment | 
 }
 
 export async function getThread(commentId: string) {
-  const { supabase } = await getSession();
-  if (!Id.safeParse(commentId).success) return { replies: [], activity: [], screenshotUrl: null };
-  const [{ data: replies }, { data: activity }, { data: c }] = await Promise.all([
+  const { supabase, user } = await getSession();
+  if (!Id.safeParse(commentId).success) return { projectId: null, replies: [], activity: [], screenshotUrl: null, attachments: [] as Attachment[] };
+  const [{ data: replies }, { data: activity }, { data: c }, { data: files }] = await Promise.all([
     supabase.from("replies").select("id, author_name, body, created_at").eq("comment_id", commentId).order("created_at"),
     supabase.from("activity").select("id, actor_name, action, meta, created_at").eq("comment_id", commentId).order("created_at"),
-    supabase.from("comments").select("screenshot_path").eq("id", commentId).maybeSingle(),
+    supabase.from("comments").select("project_id, screenshot_path").eq("id", commentId).maybeSingle(),
+    supabase.from("attachments").select("id, path, name, mime, size, created_by").eq("comment_id", commentId).order("created_at"),
   ]);
   let screenshotUrl: string | null = null;
   if (c?.screenshot_path) {
     const { data } = await supabase.storage.from("screenshots").createSignedUrl(c.screenshot_path, 600);
     screenshotUrl = data?.signedUrl ?? null;
   }
-  return { replies: replies ?? [], activity: activity ?? [], screenshotUrl };
+  let attachments: Attachment[] = [];
+  if (files?.length) {
+    const { data: signed } = await supabase.storage.from("attachments").createSignedUrls(files.map((f) => f.path), 600);
+    attachments = files.map((f, i) => ({ id: f.id, name: f.name, mime: f.mime, size: f.size, url: signed?.[i]?.signedUrl ?? null, mine: f.created_by === user.id }));
+  }
+  return { projectId: c?.project_id ?? null, replies: replies ?? [], activity: activity ?? [], screenshotUrl, attachments };
+}
+
+// ---------------------------------------------------------------- attachments
+
+export type Attachment = { id: string; name: string; mime: string; size: number; url: string | null; mine: boolean };
+
+/** The browser uploads straight to private storage (RLS-checked); this records the file on the comment. */
+export async function addAttachment(commentId: string, path: string, name: string): Promise<Result<Attachment>> {
+  const { supabase, user } = await getSession();
+  if (!Id.safeParse(commentId).success) return fail("Comment not found.");
+  const { data: c } = await supabase.from("comments").select("project_id").eq("id", commentId).maybeSingle();
+  if (!c) return fail("Comment not found.");
+  if (!new RegExp(`^${c.project_id}/${commentId}/[0-9a-f-]{36}\\.(png|jpg|webp|gif|pdf)$`).test(path)) return fail("Upload the file first.");
+  // Size and type come from storage (which enforces the bucket's limits), not from the browser.
+  const { data: obj } = await supabaseAdmin().storage.from("attachments").info(path);
+  if (!obj?.size || !obj.contentType) return fail("Upload the file first.");
+  const { data, error } = await supabase
+    .from("attachments")
+    .insert({ comment_id: commentId, project_id: c.project_id, path, name: name.trim().slice(0, 200) || "file", mime: obj.contentType, size: obj.size, created_by: user.id })
+    .select("id, name, mime, size")
+    .single();
+  if (error) return fail("Couldn't attach the file.");
+  const { data: signed } = await supabase.storage.from("attachments").createSignedUrl(path, 600);
+  return ok({ ...data, url: signed?.signedUrl ?? null, mine: true });
+}
+
+export async function deleteAttachment(attachmentId: string): Promise<Result> {
+  const { supabase } = await getSession();
+  if (!Id.safeParse(attachmentId).success) return fail("File not found.");
+  const { data, error } = await supabase.from("attachments").delete().eq("id", attachmentId).select("path");
+  if (error || !data?.length) return fail("Only the person who added a file can remove it.");
+  await supabaseAdmin().storage.from("attachments").remove(data.map((a) => a.path));
+  return ok(undefined);
 }
 
 export async function deleteComment(commentId: string): Promise<Result> {
