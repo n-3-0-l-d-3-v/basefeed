@@ -18,6 +18,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/" className="hover:text-white">
               Projects
             </Link>
+            <Link href="/account" className="hover:text-white">
+              Account
+            </Link>
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-3">
             <span className="hidden truncate text-[12px] text-white/45 md:inline" title="Workspace">

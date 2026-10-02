@@ -8,7 +8,7 @@ import { NewProjectButton } from "./new-project";
 export const metadata: Metadata = { title: "Projects" };
 
 export default async function ProjectsPage() {
-  const { supabase, profile } = await getSession();
+  const { supabase, profile, workspaces } = await getSession();
   const [{ data: projects }, { data: open }] = await Promise.all([
     supabase.from("projects").select("id, name, site_url, updated_at, pages(count)").is("archived_at", null).order("updated_at", { ascending: false }),
     supabase.from("comments").select("project_id, anchor_state, change_summary").neq("status", "resolved"),
@@ -39,12 +39,12 @@ export default async function ProjectsPage() {
             )}
           </h1>
         </div>
-        <NewProjectButton />
+        <NewProjectButton workspaces={workspaces.map((w) => ({ id: w.id, name: w.name }))} />
       </div>
 
       {!projects?.length ? (
         <div className="rounded-xl bg-panel ring-1 ring-line">
-          <EmptyState title="No projects yet" action={<NewProjectButton />}>
+          <EmptyState title="No projects yet" action={<NewProjectButton workspaces={workspaces.map((w) => ({ id: w.id, name: w.name }))} />}>
             Add a client site, paste one line into Webflow, and comments start landing on the exact element they&apos;re about.
           </EmptyState>
         </div>

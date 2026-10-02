@@ -36,7 +36,8 @@ export async function createProject(_: unknown, form: FormData): Promise<Result 
   const { supabase, user, workspaces } = await getSession();
   const parsed = NewProject.safeParse({ name: form.get("name"), siteUrl: String(form.get("siteUrl") ?? "").trim() });
   if (!parsed.success) return fail(parsed.error.issues[0]!.message);
-  const workspace = workspaces[0];
+  const wanted = String(form.get("workspaceId") ?? "");
+  const workspace = workspaces.find((w) => w.id === wanted) ?? workspaces[0];
   if (!workspace) return fail("You don't belong to a workspace yet.");
   const url = normalizePageUrl(parsed.data.siteUrl)!;
   const { data: project, error } = await supabase
