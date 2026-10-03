@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { inbox, login, PROJECT, SITE, siteFrame, unique } from "./helpers";
+import { emailText, inbox, login, PROJECT, SITE, siteFrame, unique } from "./helpers";
 
 test.describe("site visitors", () => {
   test("ordinary visitors get only the 1 KB loader and no widget", async ({ page }) => {
@@ -276,6 +276,76 @@ test.describe("clients via share link", () => {
     await page.getByLabel("Reply").fill(answer);
     await page.getByRole("button", { name: "Reply", exact: true }).click();
     await expect.poll(async () => (await inbox("casey@client.test")).some((m) => m.Snippet.includes(answer)), { timeout: 20_000 }).toBe(true);
+  });
+
+  test("a resolved comment goes back to the client, who confirms it or sends it back from the emailed link", async ({ page, browser }) => {
+    await login(page);
+    await page.goto(`/p/${PROJECT}/settings`);
+    await page.getByLabel("Label").fill("E2E sign-off");
+    await page.getByRole("button", { name: "Create link" }).click();
+    const link = await page.locator('input[readonly][value*="/s/"]').first().inputValue();
+
+    const email = `robin.${Date.now().toString(36)}@client.test`;
+    const fixed = unique("Make the pricing link bolder");
+    const notFixed = unique("This heading is too small");
+    let client = await browser.newContext();
+    let guest = await client.newPage();
+    await guest.goto(link);
+    await guest.getByLabel("Your name").fill("Robin Client");
+    await guest.getByLabel("Email").fill(email);
+    await guest.getByRole("button", { name: /start reviewing/i }).click();
+    await expect(guest.getByRole("toolbar", { name: "Feedback" })).toBeVisible();
+    await guest.getByRole("button", { name: "Comment", exact: true }).click();
+    for (const [target, text] of [[".navbar_link >> text=Pricing", fixed], [".section_features h2", notFixed]] as const) {
+      await guest.locator(target).click();
+      await guest.getByPlaceholder("What should change?").fill(text);
+      await guest.getByRole("button", { name: "Send" }).click();
+      await expect(guest.getByRole("status")).toContainText(/Comment #\d+ added/);
+    }
+    await client.close();
+
+    // The team resolves both; nobody has to write to the client: each resolve asks them to confirm.
+    await page.goto(`/p/${PROJECT}`);
+    for (const text of [fixed, notFixed]) {
+      await page.getByRole("tab", { name: /^All/ }).click();
+      await page.getByText(text).first().click();
+      const detail = page.getByRole("article", { name: /Comment \d+/ }).filter({ hasText: text });
+      await detail.getByRole("button", { name: "Resolve" }).click();
+      await expect(detail.getByText("Waiting for Robin to confirm")).toBeVisible();
+      await detail.getByRole("button", { name: "Close" }).click();
+    }
+    const linkFor = async (text: string) => {
+      let body: string | null = null;
+      await expect.poll(async () => (body = await emailText(email, text)), { timeout: 20_000 }).toContain("Does it look right?");
+      return /Check it on the page: (\S+)/.exec(body!)![1]!;
+    };
+
+    // The emailed link opens the page on that comment, already signed in as the client.
+    client = await browser.newContext();
+    guest = await client.newPage();
+    await guest.goto(await linkFor(fixed));
+    await expect(guest.getByRole("dialog", { name: /Comment \d+/ }).getByText("Ready for you to check")).toBeVisible();
+    await guest.getByRole("button", { name: "Looks good" }).click();
+    await expect(guest.getByRole("status")).toContainText("Thanks, confirmed");
+
+    guest = await client.newPage(); // a second email, opened in a new tab
+    await guest.goto(await linkFor(notFixed));
+    const thread = guest.getByRole("dialog", { name: /Comment \d+/ });
+    await thread.getByRole("textbox").fill("Still small on my laptop");
+    await thread.getByRole("button", { name: "Not yet" }).click();
+    await expect(guest.getByRole("status")).toContainText("Sent back to the team");
+    await client.close();
+
+    // The team sees both answers; the one sent back is open again with the client's note.
+    await page.reload();
+    await page.getByRole("tab", { name: /^All/ }).click();
+    await expect(page.getByRole("button").filter({ hasText: fixed })).toContainText("Client confirmed");
+    await page.getByRole("button").filter({ hasText: notFixed }).click();
+    const detail = page.getByRole("article", { name: /Comment \d+/ }).filter({ hasText: notFixed });
+    await expect(detail.getByText("Sent back by Robin")).toBeVisible();
+    await expect(detail.getByLabel("Status")).toHaveValue("open");
+    await expect(detail.getByText("Still small on my laptop")).toBeVisible();
+    await expect.poll(async () => (await inbox("demo@basenine.test")).some((m) => m.Subject.startsWith("Not fixed yet")), { timeout: 20_000 }).toBe(true);
   });
 });
 

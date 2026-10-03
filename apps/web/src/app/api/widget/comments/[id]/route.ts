@@ -1,5 +1,7 @@
 import { AnchorSchema, StatusSchema, type Json } from "@bn/shared";
+import { after } from "next/server";
 import { z } from "zod";
+import { drainJobs } from "@/lib/jobs";
 import { HttpError, preflight, readJson, requireMember, widgetRoute } from "@/lib/widget/route";
 
 export const OPTIONS = preflight;
@@ -20,5 +22,6 @@ export const PATCH = widgetRoute<{ id: string }>(async (ctx, { id }) => {
   });
   if (error?.code === "P0002") throw new HttpError(404, "Comment not found");
   if (error) throw error;
+  after(() => drainJobs()); // resolving a client's comment emails them to confirm
   return new Response(null, { status: 204 });
 });

@@ -88,6 +88,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(150,255,12
 .btn.dark { background: var(--night); color: #fff; box-shadow: none; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.pin.review { background: var(--lime); color: var(--ink); }
 .spacer { flex: 1; }
 .hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .meta { color: var(--muted); font-size: 12px; }

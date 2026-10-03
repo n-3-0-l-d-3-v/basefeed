@@ -1,4 +1,4 @@
-import type { AnchorInput, CommentContext, Priority, Status, Triage } from "@bn/shared";
+import type { AnchorInput, ClientReview, CommentContext, Priority, Status, Triage } from "@bn/shared";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { currentUser } from "./supabase/server";
@@ -51,13 +51,14 @@ export type DashboardComment = {
   change_summary: { comparable: boolean; changes: { field: string; from: string; to: string }[]; checkedAt?: string } | null;
   triage: (Triage & { model?: string; provider?: string; ms?: number; at?: string }) | null;
   triage_state: "pending" | "ready" | "accepted" | "dismissed" | "unavailable";
+  client_review: ClientReview | null;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
 };
 
 export const COMMENT_COLUMNS =
-  "id, number, page_id, body, title, category, status, priority, author_name, author_user_id, author_guest_id, assignee_id, anchor, pin, context, screenshot_path, anchor_state, change_summary, triage, triage_state, created_at, updated_at, resolved_at";
+  "id, number, page_id, body, title, category, status, priority, author_name, author_user_id, author_guest_id, assignee_id, anchor, pin, context, screenshot_path, anchor_state, change_summary, triage, triage_state, client_review, created_at, updated_at, resolved_at";
 
 export async function getProjectComments(projectId: string): Promise<DashboardComment[]> {
   const { supabase } = await getSession();

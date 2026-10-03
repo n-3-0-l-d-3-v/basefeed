@@ -4,7 +4,7 @@ import { supabaseAdmin } from "./supabase/server";
 type Admin = ReturnType<typeof supabaseAdmin>;
 
 export const WIDGET_COMMENT_COLUMNS =
-  "id, number, body, title, status, priority, author_name, created_at, anchor, snapshot, anchor_state, change_summary" as const;
+  "id, number, body, title, status, priority, author_name, author_user_id, author_guest_id, created_at, anchor, snapshot, anchor_state, change_summary, client_review" as const;
 
 type Row = {
   id: string;
@@ -14,16 +14,22 @@ type Row = {
   status: WidgetComment["status"];
   priority: WidgetComment["priority"];
   author_name: string;
+  author_user_id: string | null;
+  author_guest_id: string | null;
   created_at: string;
+  client_review: string | null;
   anchor: Json | null;
   snapshot: Json | null;
   anchor_state: string;
   change_summary: Json | null;
 };
 
-export function toWidgetComment(row: Row, replies: WidgetReply[]): WidgetComment {
+/** `viewer` is the widget session's user or guest id; author ids themselves never leave the server. */
+export function toWidgetComment({ author_user_id, author_guest_id, ...row }: Row, replies: WidgetReply[], viewer: string): WidgetComment {
   return {
     ...row,
+    mine: viewer === author_user_id || viewer === author_guest_id,
+    client_review: row.client_review as WidgetComment["client_review"],
     anchor: row.anchor as unknown as AnchorInput | null,
     snapshot: row.snapshot as unknown as SnapshotInput | null,
     anchor_state: row.anchor_state as WidgetComment["anchor_state"],

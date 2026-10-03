@@ -23,7 +23,7 @@ const key = () => new TextEncoder().encode(env().WIDGET_TOKEN_SECRET);
  * re-checked against the database on every request, so removing a member, revoking a share link or
  * disconnecting a site takes effect immediately rather than at expiry.
  */
-export async function signWidgetToken(c: WidgetClaims): Promise<string> {
+export async function signWidgetToken(c: WidgetClaims, ttl: string = TTL): Promise<string> {
   const { sub, ...rest } = c;
   return new SignJWT(rest)
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
@@ -31,7 +31,7 @@ export async function signWidgetToken(c: WidgetClaims): Promise<string> {
     .setAudience(AUDIENCE)
     .setIssuer(env().APP_URL)
     .setIssuedAt()
-    .setExpirationTime(TTL)
+    .setExpirationTime(ttl)
     .sign(key());
 }
 

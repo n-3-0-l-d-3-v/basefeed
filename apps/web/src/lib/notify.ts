@@ -1,11 +1,15 @@
 import { sendEmail } from "./email";
 import { env } from "./env";
 import { supabaseAdmin } from "./supabase/server";
+import { originOf } from "./urls";
+import { signWidgetToken } from "./widget/token";
 
 type Payload =
   | { event: "comment.created"; comment_id: string }
   | { event: "comment.assigned"; comment_id: string; assignee_id: string }
-  | { event: "reply.created"; reply_id: string };
+  | { event: "reply.created"; reply_id: string }
+  | { event: "review.requested"; comment_id: string }
+  | { event: "review.rejected"; comment_id: string };
 
 type Pref = "new_comments" | "assignments" | "replies";
 type Recipient = { email: string; name: string; kind: "member" | "guest" };
@@ -39,6 +43,20 @@ async function members(userIds: string[], pref: Pref): Promise<Recipient[]> {
 
 function commentLink(c: { project_id: string; page_id: string; id: string }) {
   return `${env().APP_URL}/p/${c.project_id}?page=${c.page_id}&c=${c.id}`;
+}
+
+/**
+ * A link that opens the page in feedback mode on one comment, already signed in as the client it
+ * was emailed to. It only works while the project still has an active share link, so turning
+ * client access off also turns these off; without one the client just gets the page.
+ */
+async function clientLink(c: { id: string; project_id: string; page: { url: string } }, guest: { id: string; name: string }): Promise<string> {
+  const origin = originOf(c.page.url);
+  const { data: links } = await supabaseAdmin().from("share_links").select("id, expires_at").eq("project_id", c.project_id).is("revoked_at", null);
+  const link = (links ?? []).find((l) => !l.expires_at || Date.parse(l.expires_at) > Date.now());
+  if (!origin || !link) return c.page.url;
+  const token = await signWidgetToken({ sub: guest.id, kind: "guest", pid: c.project_id, org: origin, name: guest.name, sl: link.id }, "7d");
+  return `${c.page.url}#bn_token=${encodeURIComponent(token)}&bn_c=${c.id}`;
 }
 
 function layout(o: { eyebrow: string; heading: string; quote: string; meta: string; cta: { label: string; url: string } }) {
@@ -105,6 +123,40 @@ export async function handleNotify(p: Payload): Promise<void> {
     return;
   }
 
+  if (p.event === "review.requested") {
+    const c = await loadComment(p.comment_id);
+    if (!c?.author_guest_id) return;
+    const { data: guest } = await admin.from("guests").select("id, email, name").eq("id", c.author_guest_id).maybeSingle();
+    if (!guest) return;
+    const url = await clientLink(c, guest);
+    await deliver([{ email: guest.email, name: guest.name, kind: "guest" }], `Done on ${c.project.name}: does this look right?`, () =>
+      layout({
+        eyebrow: `${c.project.name} · ready for you to check`,
+        heading: "We've made this change. Does it look right?",
+        quote: clip(c.body, 600),
+        meta: "Open the page and choose Looks good or Not yet on your comment.",
+        cta: { label: "Check it on the page", url },
+      }),
+    );
+    return;
+  }
+
+  if (p.event === "review.rejected") {
+    const c = await loadComment(p.comment_id);
+    if (!c) return;
+    const { data: ws } = await admin.from("workspace_members").select("user_id").eq("workspace_id", c.project.workspace_id);
+    await deliver(await members((ws ?? []).map((m) => m.user_id), "new_comments"), `Not fixed yet: #${c.number} on ${c.project.name}`, () =>
+      layout({
+        eyebrow: `${c.project.name} · sent back by the client`,
+        heading: `${c.author_name} says #${c.number} isn't right yet`,
+        quote: clip(c.body, 600),
+        meta: "It has been reopened. Their note, if they left one, is in the thread.",
+        cta: { label: "Open the comment", url: commentLink(c) },
+      }),
+    );
+    return;
+  }
+
   const { data: reply } = await admin.from("replies").select("id, comment_id, author_user_id, author_guest_id, author_name, body").eq("id", p.reply_id).maybeSingle();
   if (!reply) return;
   const c = await loadComment(reply.comment_id);
@@ -113,9 +165,13 @@ export async function handleNotify(p: Payload): Promise<void> {
   const memberIds = [c.author_user_id, c.assignee_id].filter((id): id is string => !!id && id !== reply.author_user_id);
   const recipients = await members(memberIds, "replies");
   // Clients who commented through a share link gave their email so the team could answer them.
+  let guestUrl = c.page.url;
   if (c.author_guest_id && c.author_guest_id !== reply.author_guest_id) {
-    const { data: guest } = await admin.from("guests").select("email, name").eq("id", c.author_guest_id).maybeSingle();
-    if (guest) recipients.push({ email: guest.email, name: guest.name, kind: "guest" });
+    const { data: guest } = await admin.from("guests").select("id, email, name").eq("id", c.author_guest_id).maybeSingle();
+    if (guest) {
+      recipients.push({ email: guest.email, name: guest.name, kind: "guest" });
+      guestUrl = await clientLink(c, guest);
+    }
   }
   await deliver(recipients, `${reply.author_name} replied to #${c.number} on ${c.project.name}`, (r) =>
     layout({
@@ -123,7 +179,7 @@ export async function handleNotify(p: Payload): Promise<void> {
       heading: `${reply.author_name} replied`,
       quote: clip(reply.body, 600),
       meta: `On: "${clip(c.body, 120)}"`,
-      cta: r.kind === "guest" ? { label: "View the page", url: c.page.url } : { label: "Open the conversation", url: commentLink(c) },
+      cta: r.kind === "guest" ? { label: "Reply on the page", url: guestUrl } : { label: "Open the conversation", url: commentLink(c) },
     }),
   );
 }

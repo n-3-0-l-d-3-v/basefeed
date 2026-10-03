@@ -21,7 +21,7 @@ export const GET = widgetRoute(async ({ req, claims, project, admin }) => {
     .order("number");
   if (error) throw error;
   const replies = await repliesByComment(admin, rows.map((r) => r.id));
-  return NextResponse.json({ comments: rows.map((r) => toWidgetComment(r, replies.get(r.id) ?? [])) });
+  return NextResponse.json({ comments: rows.map((r) => toWidgetComment(r, replies.get(r.id) ?? [], claims.sub)) });
 });
 
 export const POST = widgetRoute(async ({ req, claims, project, admin }) => {
@@ -60,5 +60,5 @@ export const POST = widgetRoute(async ({ req, claims, project, admin }) => {
   // Triage + the team notification (queued by a database trigger) run after the response is sent.
   after(() => drainJobs());
 
-  return NextResponse.json({ comment: toWidgetComment(row, []) }, { status: 201 });
+  return NextResponse.json({ comment: toWidgetComment(row, [], claims.sub) }, { status: 201 });
 });

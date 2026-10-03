@@ -88,13 +88,13 @@ isOneToOne: false
                   ]
                 },"comments": {
                   Row: {
-                    "anchor": Json | null,"anchor_state": string,"assignee_id": string | null,"author_guest_id": string | null,"author_name": string,"author_user_id": string | null,"body": string,"category": string | null,"change_summary": Json | null,"checked_at": string | null,"context": NonNullable<Json>,"created_at": string,"id": string,"number": number,"page_id": string,"pin": Json | null,"priority": Database["public"]['Enums']["comment_priority"],"project_id": string,"resolved_at": string | null,"screenshot_path": string | null,"snapshot": Json | null,"status": Database["public"]['Enums']["comment_status"],"title": string | null,"triage": Json | null,"triage_state": string,"updated_at": string
+                    "anchor": Json | null,"anchor_state": string,"assignee_id": string | null,"author_guest_id": string | null,"author_name": string,"author_user_id": string | null,"body": string,"category": string | null,"change_summary": Json | null,"checked_at": string | null,"client_review": string | null,"client_reviewed_at": string | null,"context": NonNullable<Json>,"created_at": string,"id": string,"number": number,"page_id": string,"pin": Json | null,"priority": Database["public"]['Enums']["comment_priority"],"project_id": string,"resolved_at": string | null,"screenshot_path": string | null,"snapshot": Json | null,"status": Database["public"]['Enums']["comment_status"],"title": string | null,"triage": Json | null,"triage_state": string,"updated_at": string
                   }
                   Insert: {
-                    "anchor"?: Json | null,"anchor_state"?: string,"assignee_id"?: string | null,"author_guest_id"?: string | null,"author_name": string,"author_user_id"?: string | null,"body": string,"category"?: string | null,"change_summary"?: Json | null,"checked_at"?: string | null,"context"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"number"?: number,"page_id": string,"pin"?: Json | null,"priority"?: Database["public"]['Enums']["comment_priority"],"project_id": string,"resolved_at"?: string | null,"screenshot_path"?: string | null,"snapshot"?: Json | null,"status"?: Database["public"]['Enums']["comment_status"],"title"?: string | null,"triage"?: Json | null,"triage_state"?: string,"updated_at"?: string
+                    "anchor"?: Json | null,"anchor_state"?: string,"assignee_id"?: string | null,"author_guest_id"?: string | null,"author_name": string,"author_user_id"?: string | null,"body": string,"category"?: string | null,"change_summary"?: Json | null,"checked_at"?: string | null,"client_review"?: string | null,"client_reviewed_at"?: string | null,"context"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"number"?: number,"page_id": string,"pin"?: Json | null,"priority"?: Database["public"]['Enums']["comment_priority"],"project_id": string,"resolved_at"?: string | null,"screenshot_path"?: string | null,"snapshot"?: Json | null,"status"?: Database["public"]['Enums']["comment_status"],"title"?: string | null,"triage"?: Json | null,"triage_state"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "anchor"?: Json | null,"anchor_state"?: string,"assignee_id"?: string | null,"author_guest_id"?: string | null,"author_name"?: string,"author_user_id"?: string | null,"body"?: string,"category"?: string | null,"change_summary"?: Json | null,"checked_at"?: string | null,"context"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"number"?: number,"page_id"?: string,"pin"?: Json | null,"priority"?: Database["public"]['Enums']["comment_priority"],"project_id"?: string,"resolved_at"?: string | null,"screenshot_path"?: string | null,"snapshot"?: Json | null,"status"?: Database["public"]['Enums']["comment_status"],"title"?: string | null,"triage"?: Json | null,"triage_state"?: string,"updated_at"?: string
+                    "anchor"?: Json | null,"anchor_state"?: string,"assignee_id"?: string | null,"author_guest_id"?: string | null,"author_name"?: string,"author_user_id"?: string | null,"body"?: string,"category"?: string | null,"change_summary"?: Json | null,"checked_at"?: string | null,"client_review"?: string | null,"client_reviewed_at"?: string | null,"context"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"number"?: number,"page_id"?: string,"pin"?: Json | null,"priority"?: Database["public"]['Enums']["comment_priority"],"project_id"?: string,"resolved_at"?: string | null,"screenshot_path"?: string | null,"snapshot"?: Json | null,"status"?: Database["public"]['Enums']["comment_status"],"title"?: string | null,"triage"?: Json | null,"triage_state"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -376,6 +376,12 @@ isOneToOne: false
                            },
 "is_member":
 { Args: { "ws": string }; Returns: boolean
+                           },
+"review_comment_as_guest":
+{ Args: { "p_approved": boolean,"p_comment": string,"p_guest": string,"p_note"?: string,"p_project": string }; Returns: undefined
+                           },
+"tick_jobs":
+{ Args: Record<PropertyKey, never>; Returns: undefined
                            },
 "update_comment_as":
 { Args: { "p_actor": string,"p_actor_name": string,"p_comment": string,"p_patch": Json,"p_project": string }; Returns: undefined

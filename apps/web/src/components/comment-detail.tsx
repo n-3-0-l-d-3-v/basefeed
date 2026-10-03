@@ -39,6 +39,8 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   "comment.repinned": () => "moved the pin to the right element",
   "triage.accepted": () => "applied the AI labels",
   "triage.dismissed": () => "dismissed the AI flag",
+  "client.approved": () => "confirmed the fix",
+  "client.rejected": () => "said it isn't right yet",
 };
 
 export function CommentDetail({
@@ -77,7 +79,8 @@ export function CommentDetail({
   const change = (partial: Partial<DashboardComment>) => {
     const before: Partial<DashboardComment> = {};
     for (const k of Object.keys(partial) as (keyof DashboardComment)[]) (before as Record<string, unknown>)[k] = c[k];
-    onPatch(c.id, partial);
+    // Resolving a client's comment asks them to confirm (the database does it); show that at once.
+    onPatch(c.id, partial.status === "resolved" && c.author_guest_id ? { ...partial, client_review: "pending" } : partial);
     setError(null);
     start(async () => {
       const r = await updateComment(c.id, partial as Parameters<typeof updateComment>[1]);
@@ -135,6 +138,7 @@ export function CommentDetail({
     });
 
   const changes = c.change_summary?.changes ?? [];
+  const client = c.author_name.split(" ")[0] || "The client";
   const pinState = c.status === "resolved" ? "resolved" : c.anchor_state === "detached" || c.anchor_state === "suggested" ? "changed" : "open";
 
   return (
@@ -220,7 +224,22 @@ export function CommentDetail({
               <Check aria-hidden />
               Verify and resolve
             </Button>
+            {c.author_guest_id && <p className="mt-2 text-[12px] opacity-80">{client} will be asked to confirm it on the page.</p>}
           </Notice>
+        )}
+        {c.client_review === "pending" && (
+          <Notice tone="info" title={`Waiting for ${client} to confirm`}>
+            They were emailed a link that opens the page on this comment, with Looks good and Not yet.
+          </Notice>
+        )}
+        {c.client_review === "approved" && (
+          <p className="flex items-center gap-1.5 rounded-lg bg-accent-soft px-3 py-2 text-[13px] ring-1 ring-inset ring-[#cfe9c6]">
+            <Check aria-hidden className="size-4 text-[#1f5c12]" />
+            {client} confirmed the fix.
+          </p>
+        )}
+        {c.client_review === "rejected" && c.status !== "resolved" && (
+          <Notice title={`Sent back by ${client}`}>They checked the fix and said it isn&apos;t right yet. Their note, if they left one, is in the replies.</Notice>
         )}
 
         <TriageCard

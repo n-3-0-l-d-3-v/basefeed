@@ -214,7 +214,8 @@ export async function updateComment(commentId: string, patch: z.input<typeof Pat
   if (!parsed.success || !Id.safeParse(commentId).success) return fail("Invalid change.");
   const { data, error } = await supabase.from("comments").update(parsed.data).eq("id", commentId).select("id");
   if (error || !data?.length) return fail("Couldn't update the comment.");
-  if (parsed.data.assignee_id) after(() => drainJobs());
+  // Assigning someone, or resolving a client's comment, queues an email.
+  if (parsed.data.assignee_id || parsed.data.status === "resolved") after(() => drainJobs());
   return ok(undefined);
 }
 

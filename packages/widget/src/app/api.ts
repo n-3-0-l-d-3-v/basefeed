@@ -63,6 +63,10 @@ export class Api {
     return this.req<void>("PATCH", `/comments/${id}`, { status });
   }
 
+  review(id: string, approved: boolean, note?: string) {
+    return this.req<void>("POST", `/comments/${id}/review`, { approved, note });
+  }
+
   repin(id: string, anchor: Anchor) {
     return this.req<void>("PATCH", `/comments/${id}`, { anchor });
   }

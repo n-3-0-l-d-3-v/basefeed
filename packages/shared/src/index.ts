@@ -69,6 +69,9 @@ export const CreateCommentSchema = z.object({
   screenshot: ScreenshotSchema.optional(),
 });
 
+export type ClientReview = "pending" | "approved" | "rejected";
+export const ReviewSchema = z.object({ approved: z.boolean(), note: z.string().trim().max(5000).optional() });
+
 export const CreateReplySchema = z.object({ body: z.string().trim().min(1).max(5000) });
 
 export const AnchorReportSchema = z.object({
@@ -148,6 +151,10 @@ export interface WidgetComment {
   snapshot: SnapshotInput | null;
   anchor_state: "attached" | "suggested" | "detached" | "unknown";
   change_summary: { comparable: boolean; changes: { field: string; from: string; to: string }[] } | null;
+  /** Client sign-off on a resolved comment: asked ("pending"), then confirmed or sent back. */
+  client_review: ClientReview | null;
+  /** The person using this widget session wrote the comment. */
+  mine: boolean;
   replies: WidgetReply[];
 }
 

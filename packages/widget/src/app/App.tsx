@@ -63,19 +63,31 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
   const load = useCallback(async () => {
     const { comments } = await api.comments(page.current);
     setComments(comments);
+    return comments;
   }, [api]);
 
   const start = useCallback(async () => {
     try {
       setMe(await api.me());
       setPhase({ k: "ready" });
-      await load();
+      const loaded = await load();
       tracker.start();
+      // Emailed links point at one comment (#bn_c=…); otherwise tell a client what is waiting for them.
+      const linked = /[#&]bn_c=([0-9a-f-]{36})/.exec(location.hash)?.[1];
+      const waiting = loaded.filter((c) => c.mine && c.client_review === "pending");
+      if (linked) {
+        history.replaceState(null, "", location.pathname + location.search);
+        if (loaded.some((c) => c.id === linked)) setOpenId(linked);
+      } else if (waiting.length === 1) setOpenId(waiting[0]!.id);
+      else if (waiting.length > 1) {
+        setPanel(true);
+        flash(`${waiting.length} fixes are ready for you to check`);
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       setPhase({ k: "failed", message: e instanceof Error ? e.message : "Something went wrong." });
     }
-  }, [api, load, tracker]);
+  }, [api, load, tracker, flash]);
 
   // Boot: obtain a token, then load.
   useEffect(() => {
@@ -211,6 +223,23 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
     setComments((list) => list.map((c) => (c.id === id ? { ...c, replies: [...c.replies, reply] } : c)));
   };
 
+  const review = async (c: WidgetComment, approved: boolean, note?: string) => {
+    await api.review(c.id, approved, note);
+    setComments((list) =>
+      list.map((x) =>
+        x.id !== c.id
+          ? x
+          : {
+              ...x,
+              client_review: approved ? "approved" : "rejected",
+              status: approved ? x.status : "open",
+              replies: note ? [...x.replies, { id: crypto.randomUUID(), author_name: me?.name ?? x.author_name, body: note, created_at: new Date().toISOString() }] : x.replies,
+            },
+      ),
+    );
+    flash(approved ? "Thanks, confirmed" : "Sent back to the team");
+  };
+
   const leave = () => {
     tracker.stop();
     session.deactivate();
@@ -248,6 +277,7 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
           onClose={() => setOpenId(null)}
           onStatus={setStatus}
           onReply={reply}
+          onReview={(approved, note) => review(open.comment, approved, note)}
           onConfirm={(el, point) => moveTo(open.comment, el, point)}
           onRepick={() => {
             setRepin(open.comment);
@@ -328,7 +358,8 @@ function Pin({ placed, active, onClick }: { placed: Placed; active: boolean; onC
   const r = element.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return null;
   if (y < -40 || y > window.innerHeight + 40 || x < -40 || x > window.innerWidth + 40) return null;
-  const cls = ["pin", "ui", comment.status === "resolved" ? "resolved" : "", resolution?.status === "suggested" ? "suggested" : ""].join(" ");
+  const review = comment.mine && comment.client_review === "pending";
+  const cls = ["pin", "ui", review ? "review" : comment.status === "resolved" ? "resolved" : "", resolution?.status === "suggested" ? "suggested" : ""].join(" ");
   return (
     <button
       class={cls}
@@ -425,6 +456,7 @@ function Thread({
   onClose,
   onStatus,
   onReply,
+  onReview,
   onConfirm,
   onRepick,
 }: {
@@ -433,6 +465,7 @@ function Thread({
   onClose: () => void;
   onStatus: (id: string, s: Status) => Promise<void>;
   onReply: (id: string, body: string) => Promise<void>;
+  onReview: (approved: boolean, note?: string) => Promise<void>;
   onConfirm: (el: Element, point: { x: number; y: number }) => Promise<void>;
   onRepick: () => void;
 }) {
@@ -442,6 +475,7 @@ function Thread({
   const [error, setError] = useState<string | null>(null);
   const point = element && comment.anchor ? pinPoint(element, comment.anchor.offset) : { x: window.innerWidth - 380, y: 80 };
   const changes = comment.change_summary?.changes ?? [];
+  const toReview = comment.mine && comment.client_review === "pending" && !me.canModerate;
 
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -494,6 +528,32 @@ function Thread({
             )}
           </div>
         )}
+        {toReview && (
+          <div class="notice info">
+            <b>Ready for you to check</b>The team marked this as done. Does it look right?
+            <div class="acts">
+              <button class="btn sm primary" disabled={busy} onClick={() => void act(() => onReview(true))}>
+                <IconCheck />
+                Looks good
+              </button>
+              <button class="btn sm" disabled={busy} onClick={() => void act(async () => (await onReview(false, text.trim() || undefined), setText("")))}>
+                Not yet
+              </button>
+            </div>
+          </div>
+        )}
+        {comment.client_review === "pending" && me.canModerate && (
+          <div class="notice info">
+            <b>Waiting for the client</b>
+            {comment.author_name} was asked to confirm this fix.
+          </div>
+        )}
+        {comment.client_review === "approved" && (
+          <div class="notice info">
+            <b>Confirmed</b>
+            {comment.mine ? "You" : comment.author_name} confirmed this fix.
+          </div>
+        )}
         {comment.status !== "resolved" && changes.length > 0 && (
           <div class="notice info">
             <b>Changed since this comment</b>
@@ -520,7 +580,7 @@ function Thread({
         ))}
         <textarea
           value={text}
-          placeholder="Reply…"
+          placeholder={toReview ? "Not right yet? Say what's still off, then press Not yet" : "Reply…"}
           maxLength={5000}
           style={{ minHeight: "56px" }}
           onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
@@ -554,7 +614,7 @@ function Thread({
 function Panel({ placed, onPick, onClose }: { placed: Placed[]; onPick: (id: string) => void; onClose: () => void }) {
   const [showResolved, setShowResolved] = useState(false);
   const rows = placed
-    .filter((p) => showResolved || p.comment.status !== "resolved")
+    .filter((p) => showResolved || p.comment.status !== "resolved" || (p.comment.mine && p.comment.client_review === "pending"))
     .sort((a, b) => a.comment.number - b.comment.number);
   return (
     <div class="card panel ui" role="dialog" aria-label="Comments on this page">
@@ -582,6 +642,7 @@ function Panel({ placed, onPick, onClose }: { placed: Placed[]; onPick: (id: str
                     <div class="meta">
                       {comment.author_name} · {ago(comment.created_at)}
                       {!element ? " · element removed" : resolution?.status === "suggested" ? " · element changed" : ""}
+                      {comment.mine && comment.client_review === "pending" ? " · ready for you to check" : ""}
                     </div>
                   </span>
                 </button>

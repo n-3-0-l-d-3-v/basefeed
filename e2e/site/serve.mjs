@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+// SITE_DIR=dist serves a built copy (see build.mjs) instead of the source pages.
+const root = fileURLToPath(new URL(`./${process.env.SITE_DIR ? `${process.env.SITE_DIR}/` : ""}`, import.meta.url));
 const port = Number(process.env.PORT ?? 4000);
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript" };
 
