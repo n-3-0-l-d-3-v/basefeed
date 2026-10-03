@@ -6,8 +6,8 @@
 
 do $demo$
 declare
-  v_email text := 'neilthomasmathew123@gmail.com';
-  v_site  text := 'https://basefeed-demo.vercel.app';
+  v_email text := 'YOUR-SIGNUP-EMAIL@example.com';
+  v_site  text := 'https://YOUR-DEMO-SITE.vercel.app';
   v_user uuid;
   v_name text;
   v_ws uuid;
