@@ -101,6 +101,13 @@ export const TriageSchema = z.object({
   clarificationQuestion: z.string().max(300).nullable(),
   duplicateOf: z.number().int().positive().nullable().describe("Number of an existing open comment this duplicates, if any"),
   confidence: z.number().min(0).max(1),
+  // Added later; defaults keep triage stored before they existed readable.
+  /** Exact text replacement the author asked for, ready to paste. */
+  change: z.object({ from: z.string().max(300), to: z.string().min(1).max(300) }).nullable().default(null),
+  /** A tweak to what exists, or new work beyond it (a new section, page, feature, asset). */
+  scope: z.enum(["tweak", "new_work"]).default("tweak"),
+  /** One line explaining a changed priority or a new-work flag. */
+  reason: z.string().max(240).nullable().default(null),
 });
 
 export type AnchorInput = z.infer<typeof AnchorSchema>;

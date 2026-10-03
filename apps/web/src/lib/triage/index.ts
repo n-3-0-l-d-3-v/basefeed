@@ -1,8 +1,9 @@
-import type { AnchorInput, CommentContext, Json } from "@bn/shared";
+import type { AnchorInput, CommentContext, Json, Priority } from "@bn/shared";
 import { env } from "../env";
 import { supabaseAdmin } from "../supabase/server";
 import { AnthropicTriage } from "./anthropic";
 import { GeminiTriage } from "./gemini";
+import { triageInsights } from "./insights";
 import type { TriageInput, TriageProvider } from "./types";
 
 let provider: TriageProvider | null | undefined;
@@ -51,7 +52,7 @@ export async function buildTriageInput(commentId: string): Promise<TriageInput |
   }
 
   return {
-    comment: { body: c.body, priority: c.priority, authorKind: c.author_guest_id ? "client" : "team" },
+    comment: { number: c.number, body: c.body, priority: c.priority, authorKind: c.author_guest_id ? "client" : "team" },
     element: {
       selector: anchor?.selector ?? "(image page pin)",
       tag: anchor?.tag ?? "",
@@ -81,11 +82,18 @@ export async function runTriage(commentId: string) {
   if (!input) return;
   const started = Date.now();
   const result = await p.triage(input);
+  // Labels (a scannable title, a category) are applied straight away: they change nothing a client
+  // sees and make lists and the board usable. Anything that needs judgement (asking the author,
+  // closing a duplicate, changing priority, new work) waits for a person: only then is it "ready".
+  const needsPerson = triageInsights(result, input.comment.priority as Priority).length > 0;
   await admin
     .from("comments")
     .update({
       triage: { ...result, provider: p.name, ms: Date.now() - started, at: new Date().toISOString() } as unknown as Json,
-      triage_state: "ready",
+      triage_state: needsPerson ? "ready" : "accepted",
+      // A vague comment keeps the author's own words as its title until someone has clarified it.
+      ...(result.needsClarification ? {} : { title: result.title }),
+      category: result.category,
     })
     .eq("id", commentId)
     .eq("triage_state", "pending");

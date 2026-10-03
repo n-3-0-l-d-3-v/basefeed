@@ -25,6 +25,7 @@ jobs:
       - run: pnpm typecheck
       # Unit + property tests: the "never attaches to a different element" guarantee.
       - run: pnpm --filter @bn/anchor test
+      - run: pnpm --filter web test
 
   e2e:
     name: Database and end-to-end

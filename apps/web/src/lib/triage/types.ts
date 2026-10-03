@@ -1,7 +1,7 @@
 import type { Triage } from "@bn/shared";
 
 export interface TriageInput {
-  comment: { body: string; priority: string; authorKind: "team" | "client" };
+  comment: { number: number; body: string; priority: string; authorKind: "team" | "client" };
   element: { selector: string; tag: string; classes: string[]; excerpt: string };
   page: { url: string; title: string; breakpoint: string; viewportWidth: number; device: string };
   openComments: { number: number; summary: string }[];

@@ -6,8 +6,11 @@ import { PermanentTriageError, type TriageInput, type TriageProvider, type Triag
 // Gemini accepts a JSON Schema subset; the $schema dialect marker is dropped when serialized.
 const SCHEMA = { ...z.toJSONSchema(Output), $schema: undefined };
 
-/** Older, slower and less in demand; used when the primary model is overloaded or out of free quota. */
-const FALLBACK = "gemini-3.5-flash";
+/**
+ * Tried in order when a model is overloaded or out of quota. The free tier allows only ~20 requests
+ * a day per model, and each model has its own allowance, so the chain is also the daily capacity.
+ */
+const FALLBACKS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
 // The model stopped because of content policy: asking again gets the same answer.
 const BLOCKED = new Set<FinishReason | undefined>([
@@ -36,7 +39,8 @@ export class GeminiTriage implements TriageProvider {
     parts.push({ text: describe(input) });
 
     let response: GenerateContentResponse | undefined;
-    for (const model of new Set([this.model, FALLBACK])) {
+    const models = [...new Set([this.model, ...FALLBACKS])];
+    for (const model of models) {
       try {
         response = await this.client.models.generateContent({
           model,
@@ -45,10 +49,12 @@ export class GeminiTriage implements TriageProvider {
         });
         break;
       } catch (e) {
-        // Invalid request or key, no access, unknown model: retrying fails the same way.
-        if (e instanceof ApiError && [400, 401, 403, 404].includes(e.status)) throw new PermanentTriageError(`${e.status}: ${e.message}`);
-        // Overloaded or out of quota (both per model): try the fallback, then let the job queue retry with backoff.
-        if (model === FALLBACK || !(e instanceof ApiError && (e.status === 429 || e.status === 503))) throw e;
+        const status = e instanceof ApiError ? e.status : 0;
+        const last = model === models.at(-1);
+        // Invalid request or key, no access: retrying fails the same way. So does a model that no longer exists, once the chain is exhausted.
+        if ([400, 401, 403].includes(status) || (status === 404 && last)) throw new PermanentTriageError(`${status}: ${(e as Error).message}`);
+        // Overloaded, out of quota or retired (all per model): try the next one, then let the job queue retry with backoff.
+        if (last || ![404, 429, 503].includes(status)) throw e;
       }
     }
     if (!response) throw new Error("unreachable");
