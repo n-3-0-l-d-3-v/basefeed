@@ -69,6 +69,14 @@ h3 {
   outline-offset: 2px;
 }
 
+/* Text fields show focus with their own border and soft ring (or the caret, in the search box);
+   the keyboard outline is for buttons and links. */
+input:not([type="checkbox"], [type="radio"], [type="file"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 ::selection {
   background: var(--color-pink);
   color: var(--color-plum);
