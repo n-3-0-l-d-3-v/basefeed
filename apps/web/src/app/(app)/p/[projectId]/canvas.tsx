@@ -212,7 +212,7 @@ export function Canvas({
   }, [comments]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 lg:flex-row" style={{ height: "calc(100vh - 128px)" }}>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 lg:flex-row" style={{ height: "calc(100vh - 136px)" }}>
       {/* Pages */}
       <aside className="flex w-full shrink-0 flex-col rounded-xl bg-panel ring-1 ring-line lg:w-56">
         <div className="flex items-center justify-between px-4 pb-1 pt-3">

@@ -28,11 +28,11 @@ export default async function ProjectsPage() {
     <main className="mx-auto w-full max-w-5xl px-4 pb-16 pt-10 sm:px-6">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="eyebrow text-pink-deep">Hi {profile.name.split(" ")[0] || "there"}</p>
-          <h1 className="mt-2 text-[34px] font-normal leading-[1.05] tracking-[-0.035em]">
+          <p className="eyebrow text-[14px] text-pink-text!">(Hi {profile.name.split(" ")[0] || "there"})</p>
+          <h1 className="mt-2 text-[clamp(34px,4.4vw,48px)] font-normal leading-[1.08] tracking-[-0.035em]">
             {totalOpen ? (
               <>
-                <span className="tabular">{totalOpen}</span> open {totalOpen === 1 ? "comment" : "comments"} across your sites
+                <span className="tabular">{totalOpen}</span> open <span className="font-display">{totalOpen === 1 ? "comment" : "comments"}</span> across your sites
               </>
             ) : (
               "Client sites"

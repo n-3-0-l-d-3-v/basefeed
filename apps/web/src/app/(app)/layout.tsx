@@ -9,23 +9,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const initial = (profile.name || profile.email || "?").trim().charAt(0).toUpperCase();
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 bg-bg px-3 pt-3">
-        <div className="flex h-12 items-center gap-6 rounded-xl bg-night pl-4 pr-2 text-white shadow-[var(--shadow-soft)]">
+      {/* Same floating bar as basenine.co: translucent ink, hairline border, blur, centred. */}
+      <header className="pointer-events-none sticky top-4 z-30 mt-4 px-3">
+        <div className="pointer-events-auto mx-auto flex h-[52px] w-full max-w-[55rem] items-center gap-8 rounded-xl border border-[rgb(153_153_153/0.3)] bg-[rgb(10_10_10/0.8)] pl-5 pr-2 text-white shadow-[var(--shadow-soft)] backdrop-blur-[5px]">
           <Link href="/" className="flex items-baseline gap-2" aria-label="Basenine Feedback, all projects">
-            <span className="text-[15px] font-bold tracking-[-0.01em]">BASENINE</span>
+            <span className="text-[16px] font-black tracking-[-0.02em]">BASENINE</span>
             <span className="font-pixel text-[13px] text-accent">Feedback</span>
           </Link>
-          <nav className="hidden items-center gap-5 text-[13px] text-white/70 sm:flex">
-            <Link href="/" className="hover:text-white">
+          <nav className="hidden items-center gap-8 text-[0.8rem] font-medium leading-tight sm:flex">
+            <Link href="/" className="hover:text-white/65">
               Projects
             </Link>
-            <Link href="/account" className="hover:text-white">
+            <Link href="/account" className="hover:text-white/65">
               Account
             </Link>
           </nav>
           <div className="ml-auto flex min-w-0 items-center gap-3">
             <SearchButton />
-            <span className="hidden truncate text-[12px] text-white/45 md:inline" title="Workspace">
+            <span className="hidden truncate text-[12px] text-white/45 lg:inline" title="Workspace">
               {workspaces[0]?.name}
             </span>
             <span className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1" title={profile.email}>

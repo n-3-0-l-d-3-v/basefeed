@@ -1,5 +1,5 @@
 import { GeistMono } from "geist/font/mono";
-import { GeistPixelSquare } from "geist/font/pixel";
+import { GeistPixelCircle, GeistPixelSquare } from "geist/font/pixel";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistPixelSquare.variable} ${GeistMono.variable} h-full`}>
+    <html lang="en" className={`${GeistPixelSquare.variable} ${GeistPixelCircle.variable} ${GeistMono.variable} h-full`}>
       <head>
         {/* Satoshi is Basenine's brand face (Fontshare, free licence). */}
         <link rel="preconnect" href="https://api.fontshare.com" crossOrigin="" />

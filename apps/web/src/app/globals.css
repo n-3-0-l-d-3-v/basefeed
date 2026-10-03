@@ -1,14 +1,15 @@
 @import "tailwindcss";
 
-/* Basenine's own brand, applied to its internal tool: ivory workspace, white work surfaces, ink type.
+/* Basenine's own brand, applied to its internal tool, with values taken from basenine.co's stylesheet:
+   warm paper workspace (#f8f6ed), white work surfaces, ink type.
    Lime means "act" (primary actions), pink means "feedback" (pins, highlights, counts).
    Satoshi for everything people read; Geist Pixel only for small labels; Geist Mono for class names. */
 @theme {
-  --color-bg: #fffef4;
+  --color-bg: #f8f6ed;
   --color-panel: #ffffff;
-  --color-sunken: #f7f5ea;
-  --color-line: #e9e6d8;
-  --color-line-strong: #d3cfbe;
+  --color-sunken: #f1eee2;
+  --color-line: #e5e1d2;
+  --color-line-strong: #cfcab8;
   --color-ink: #0a0a0a;
   --color-ink-2: #2f2d29;
   --color-muted: #6b665e;
@@ -20,6 +21,7 @@
   --color-pink: #ffacca;
   --color-pink-soft: #fff0f5;
   --color-pink-deep: #b8245f;
+  --color-pink-text: #f76ba4;
   --color-plum: #540224;
 
   --color-warn: #8a5300;
@@ -31,6 +33,7 @@
 
   --font-sans: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-pixel: var(--font-geist-pixel-square), "Geist Mono", ui-monospace, monospace;
+  --font-display: var(--font-geist-pixel-circle), var(--font-geist-pixel-square), ui-monospace, monospace;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   --radius-sm: 6px;
