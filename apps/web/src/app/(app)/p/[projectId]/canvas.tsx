@@ -506,7 +506,7 @@ function CommentRow({ c, onSelect }: { c: DashboardComment; onSelect: () => void
             {c.author_guest_id && <Badge tone="info">Client</Badge>}
             <span>· {ago(c.created_at)}</span>
             {c.priority !== "medium" && <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>}
-            {c.triage_state === "ready" && <Badge tone="ink">AI suggestion</Badge>}
+            {c.triage_state === "ready" && <Badge tone="ink">Needs your call</Badge>}
             {attention && <Badge tone="pink">Needs a look</Badge>}
           </span>
         </span>

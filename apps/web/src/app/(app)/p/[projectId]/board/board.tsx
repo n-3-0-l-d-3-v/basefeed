@@ -234,7 +234,7 @@ function Card({
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
         {c.priority !== "medium" && <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>}
         {c.category && <Badge>{c.category}</Badge>}
-        {c.triage_state === "ready" && <Badge tone="ink">AI suggestion</Badge>}
+        {c.triage_state === "ready" && <Badge tone="ink">Needs your call</Badge>}
         {needsAttention(c) && <Badge tone="pink">Needs a look</Badge>}
         <span className="ml-auto truncate">
           {assignee ?? c.author_name} · {ago(c.created_at)}

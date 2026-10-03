@@ -4,7 +4,7 @@ import { Check, Copy, ExternalLink, FileText, Paperclip, RotateCw, Sparkles, Tra
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   addAttachment,
-  applyTriage,
+  decideTriage,
   deleteAttachment,
   deleteComment,
   getThread,
@@ -12,14 +12,16 @@ import {
   retryTriage,
   updateComment,
   type Attachment,
+  type TriageDecision,
 } from "@/app/(app)/actions";
 import type { DashboardComment, Member } from "@/lib/data";
 import { ago, commentToMarkdown } from "@/lib/export";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { triageInsights, type Insight } from "@/lib/triage/insights";
 import { EmojiInsert } from "./emoji-insert";
 import { Pin } from "./pin";
 import { Linkified, LoomEmbeds } from "./rich-text";
-import { Badge, Button, cx, IconButton, PRIORITY_TONE, Select, STATUS_LABEL, Textarea } from "./ui";
+import { Badge, Button, cx, IconButton, Select, STATUS_LABEL, Textarea } from "./ui";
 
 type Thread = Awaited<ReturnType<typeof getThread>>;
 
@@ -35,8 +37,8 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   "comment.priority": (m) => `changed priority from ${m.from} to ${m.to}`,
   "comment.assignee": (m) => (m.to ? "reassigned it" : "unassigned it"),
   "comment.repinned": () => "moved the pin to the right element",
-  "triage.accepted": () => "accepted the AI suggestion",
-  "triage.dismissed": () => "dismissed the AI suggestion",
+  "triage.accepted": () => "applied the AI labels",
+  "triage.dismissed": () => "dismissed the AI flag",
 };
 
 export function CommentDetail({
@@ -224,26 +226,15 @@ export function CommentDetail({
         <TriageCard
           comment={c}
           busy={pending}
-          onAccept={() =>
+          onDecide={(decision) =>
             start(async () => {
-              const r = await applyTriage(c.id, true);
+              const r = await decideTriage(c.id, decision);
               if (!r.ok) return setError(r.error);
-              onPatch(c.id, {
-                triage_state: "accepted",
-                title: c.triage?.title ?? c.title,
-                category: c.triage?.category ?? c.category,
-                priority: c.triage?.priority ?? c.priority,
-              });
+              onPatch(c.id, r.data.patch);
+              const sent = r.data.reply;
+              if (sent) setThread((t) => (t ? { ...t, replies: [...t.replies, sent] } : t));
             })
           }
-          onDismiss={() =>
-            start(async () => {
-              const r = await applyTriage(c.id, false);
-              if (!r.ok) return setError(r.error);
-              onPatch(c.id, { triage_state: "dismissed" });
-            })
-          }
-          onAsk={(q) => setReply(q)}
           onRetry={() =>
             start(async () => {
               onPatch(c.id, { triage_state: "pending" });
@@ -492,31 +483,36 @@ function Notice({ tone = "pink", title, children }: { tone?: "pink" | "info"; ti
   );
 }
 
+const INSIGHT: Record<Insight["kind"], (i: never, author: string) => { title: string; detail: string | null; action: string; decision: TriageDecision }> = {
+  clarify: (i: Extract<Insight, { kind: "clarify" }>, author) => ({ title: "Too vague to act on", detail: `“${i.question}”`, action: `Ask ${author}`, decision: "ask" }),
+  duplicate: (i: Extract<Insight, { kind: "duplicate" }>) => ({ title: `Same request as #${i.of}`, detail: "Closing this one keeps the work in a single thread.", action: "Close as duplicate", decision: "duplicate" }),
+  priority: (i: Extract<Insight, { kind: "priority" }>) => ({ title: `Looks ${i.to}, not ${i.from}`, detail: i.reason, action: `Set to ${i.to}`, decision: "priority" }),
+  scope: (i: Extract<Insight, { kind: "scope" }>) => ({ title: "New work, not a tweak", detail: i.reason ?? "This needs something that isn't on the page yet, so it may affect scope and timeline.", action: "Noted", decision: "noted" }),
+};
+
+/**
+ * AI triage stays out of the way: a clear comment is labelled silently. It shows up only with
+ * something a person has to decide (each with its one-click action), or an exact text change to paste.
+ */
 function TriageCard({
   comment: c,
   busy,
-  onAccept,
-  onDismiss,
-  onAsk,
+  onDecide,
   onRetry,
 }: {
   comment: DashboardComment;
   busy: boolean;
-  onAccept: () => void;
-  onDismiss: () => void;
-  onAsk: (q: string) => void;
+  onDecide: (d: TriageDecision) => void;
   onRetry: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
   const t = c.triage;
   if (c.triage_state === "pending")
     return (
-      <div className="rounded-xl bg-night px-4 py-3.5 text-white" aria-live="polite">
-        <p className="flex items-center gap-1.5 font-pixel text-[12px] text-accent">
-          <Sparkles aria-hidden className="size-3.5" />
-          AI triage
-        </p>
-        <p className="mt-1.5 animate-pulse text-[13px] text-white/70">Reading the comment, the element and the screenshot…</p>
-      </div>
+      <p className="flex animate-pulse items-center gap-1.5 text-[12px] text-muted" aria-live="polite">
+        <Sparkles aria-hidden className="size-3.5" />
+        AI is reading the comment and the element…
+      </p>
     );
   if (c.triage_state === "unavailable")
     return (
@@ -533,54 +529,65 @@ function TriageCard({
     );
   if (!t || c.triage_state === "dismissed") return null;
 
-  const accepted = c.triage_state === "accepted";
-  if (accepted)
-    return (
-      <section aria-label="Task" className="rounded-lg bg-accent-soft px-3 py-2.5 ring-1 ring-inset ring-[#cfe9c6]">
-        <p className="eyebrow text-[#1f5c12]">Task</p>
-        <p className="mt-1 text-[14px] leading-relaxed">{t.task}</p>
-      </section>
-    );
+  const insights = c.triage_state === "ready" ? triageInsights(t, c.priority) : [];
+  const author = c.author_name.split(" ")[0] || "the author";
+  if (insights.length === 0 && !t.change) return null;
 
   return (
-    <section aria-label="AI triage" className="rounded-xl bg-night px-4 py-4 text-white shadow-[var(--shadow-soft)]">
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 font-pixel text-[12px] text-accent">
-          <Sparkles aria-hidden className="size-3.5" />
-          AI suggestion
-        </p>
-        <span className="tabular text-[11px] text-white/55" title={t.model}>
-          {Math.round(t.confidence * 100)}% sure
-        </span>
-      </div>
-      <p className="mt-2.5 text-[15px] font-medium leading-snug">{t.title}</p>
-      <div className="mt-2 flex flex-wrap gap-1">
-        <Badge tone="neutral" className="bg-white/10 text-white ring-white/15">
-          {t.category}
-        </Badge>
-        <Badge tone={PRIORITY_TONE[t.priority]} className={t.priority === "medium" || t.priority === "low" ? "bg-white/10 text-white ring-white/15" : undefined}>
-          {t.priority}
-        </Badge>
-        {t.duplicateOf && <Badge tone="pink">Same as #{t.duplicateOf}</Badge>}
-      </div>
-      <p className="mt-2.5 text-[13px] leading-relaxed text-white/80">{t.task}</p>
-      {t.needsClarification && t.clarificationQuestion && (
-        <div className="mt-3 rounded-lg bg-white/[0.07] px-3 py-2 text-[13px] ring-1 ring-inset ring-white/10">
-          <span className="text-pink">Unclear. Ask:</span> {t.clarificationQuestion}{" "}
-          <button type="button" className="font-medium text-white underline decoration-pink underline-offset-2" onClick={() => onAsk(t.clarificationQuestion!)}>
-            Use as reply
-          </button>
-        </div>
+    <div className="flex flex-col gap-3">
+      {insights.length > 0 && (
+        <section aria-label="AI triage" className="rounded-xl bg-night px-4 py-3.5 text-white shadow-[var(--shadow-soft)]">
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 font-pixel text-[12px] text-accent">
+              <Sparkles aria-hidden className="size-3.5" />
+              Needs your call
+            </p>
+            <button type="button" disabled={busy} onClick={() => onDecide("dismiss")} className="text-[12px] text-white/55 hover:text-white">
+              Dismiss
+            </button>
+          </div>
+          <ul className="mt-2.5 flex flex-col gap-3">
+            {insights.map((i) => {
+              const v = INSIGHT[i.kind](i as never, author);
+              return (
+                <li key={i.kind} className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block text-[14px] font-medium leading-snug">{v.title}</span>
+                    {v.detail && <span className="mt-0.5 block text-[13px] leading-relaxed text-white/70">{v.detail}</span>}
+                  </span>
+                  <Button size="sm" variant="primary" disabled={busy} onClick={() => onDecide(v.decision)} className="shrink-0">
+                    {v.action}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
-      <div className="mt-4 flex gap-2">
-        <Button size="sm" variant="primary" disabled={busy} onClick={onAccept}>
-          <Check aria-hidden />
-          Accept
-        </Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={onDismiss} className="text-white/70 hover:bg-white/10 hover:text-white">
-          Dismiss
-        </Button>
-      </div>
-    </section>
+      {t.change && (
+        <section aria-label="Text change" className="rounded-lg bg-accent-soft px-3 py-2.5 ring-1 ring-inset ring-[#cfe9c6]">
+          <div className="flex items-center justify-between gap-2">
+            <p className="eyebrow text-[#1f5c12]">Text to paste</p>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-ink-2 hover:text-ink [&_svg]:size-3.5"
+              onClick={async () => {
+                await navigator.clipboard.writeText(t.change!.to);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-1 text-[14px] leading-relaxed">
+            {t.change.from && <span className="text-muted line-through">{t.change.from}</span>}
+            {t.change.from && " → "}
+            <span className="font-medium">{t.change.to}</span>
+          </p>
+        </section>
+      )}
+    </div>
   );
 }

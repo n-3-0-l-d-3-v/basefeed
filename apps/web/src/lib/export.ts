@@ -16,7 +16,10 @@ export function commentToMarkdown(c: DashboardComment, pageUrl: string): string 
   }
   lines.push(`- **Status / priority:** ${c.status} / ${c.priority}${c.category ? ` · ${c.category}` : ""}`);
   lines.push("", `**Request (${c.author_name}):**`, "", quote(c.body));
-  if (c.triage && c.triage_state !== "dismissed") lines.push("", `**Task:** ${c.triage.task}`);
+  if (c.triage && c.triage_state !== "dismissed") {
+    lines.push("", `**Task:** ${c.triage.task}`);
+    if (c.triage.change) lines.push("", `**Replace text:** "${c.triage.change.from}" → "${c.triage.change.to}"`);
+  }
   const changes = c.change_summary?.changes ?? [];
   if (changes.length) {
     lines.push("", "**Changed since this comment:**");

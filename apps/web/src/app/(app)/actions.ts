@@ -1,6 +1,6 @@
 "use server";
 
-import { CategorySchema, PrioritySchema, StatusSchema } from "@bn/shared";
+import { CategorySchema, PrioritySchema, StatusSchema, TriageSchema } from "@bn/shared";
 import { createHash, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -218,23 +218,52 @@ export async function updateComment(commentId: string, patch: z.input<typeof Pat
   return ok(undefined);
 }
 
-export async function applyTriage(commentId: string, accept: boolean): Promise<Result> {
-  const { supabase } = await getSession();
+export type TriageDecision = "ask" | "duplicate" | "priority" | "noted" | "dismiss";
+
+/**
+ * A person's answer to what triage flagged, in one click: send the clarifying question to the author,
+ * close the comment as a duplicate, take the suggested priority, acknowledge a new-work flag, or dismiss.
+ */
+export async function decideTriage(
+  commentId: string,
+  decision: TriageDecision,
+): Promise<Result<{ patch: Partial<DashboardComment>; reply: { id: string; author_name: string; body: string; created_at: string } | null }>> {
+  const { supabase, user, profile } = await getSession();
   if (!Id.safeParse(commentId).success) return fail("Comment not found.");
-  const { data: c } = await supabase.from("comments").select("triage, triage_state").eq("id", commentId).maybeSingle();
-  if (!c || c.triage_state !== "ready") return fail("There is no suggestion to apply.");
-  const t = c.triage as { title?: string; category?: string; priority?: string } | null;
-  const update = accept
-    ? {
-        triage_state: "accepted",
-        title: t?.title?.slice(0, 120) ?? null,
-        category: CategorySchema.safeParse(t?.category).data ?? null,
-        ...(PrioritySchema.safeParse(t?.priority).success ? { priority: t!.priority as z.infer<typeof PrioritySchema> } : {}),
-      }
-    : { triage_state: "dismissed" };
-  const { error } = await supabase.from("comments").update(update).eq("id", commentId);
-  if (error) return fail("Couldn't apply the suggestion.");
-  return ok(undefined);
+  const { data: c } = await supabase.from("comments").select("project_id, triage, triage_state").eq("id", commentId).maybeSingle();
+  if (!c || c.triage_state !== "ready") return fail("There is nothing to decide on this comment.");
+  const t = TriageSchema.safeParse(c.triage).data;
+  if (!t) return fail("There is nothing to decide on this comment.");
+
+  let text: string | null = null;
+  let patch: Partial<DashboardComment> = { triage_state: "accepted" };
+  if (decision === "ask") {
+    if (!t.clarificationQuestion) return fail("There is no question to ask.");
+    text = t.clarificationQuestion;
+  } else if (decision === "duplicate") {
+    if (!t.duplicateOf) return fail("No duplicate was found.");
+    text = `Same request as #${t.duplicateOf}, so we're tracking it there.`;
+    patch = { ...patch, status: "resolved" };
+  } else if (decision === "priority") {
+    patch = { ...patch, priority: t.priority };
+  } else if (decision === "dismiss") {
+    patch = { triage_state: "dismissed" };
+  }
+
+  let reply = null;
+  if (text) {
+    const { data, error } = await supabase
+      .from("replies")
+      .insert({ comment_id: commentId, project_id: c.project_id, author_user_id: user.id, author_name: profile.name || "Team", body: text })
+      .select("id, author_name, body, created_at")
+      .single();
+    if (error) return fail("Couldn't send the reply.");
+    reply = data;
+  }
+  const { error } = await supabase.from("comments").update(patch).eq("id", commentId);
+  if (error) return fail("Couldn't apply that.");
+  after(() => drainJobs());
+  return ok({ patch, reply });
 }
 
 export async function retryTriage(commentId: string): Promise<Result> {
