@@ -6,8 +6,8 @@
 
 do $demo$
 declare
-  v_email text := 'YOUR-SIGNUP-EMAIL@example.com';
-  v_site  text := 'https://YOUR-DEMO-SITE.vercel.app';
+  v_email text := 'neilthomasmathew123@gmail.com';
+  v_site  text := 'https://basefeed-demo.vercel.app';
   v_user uuid;
   v_name text;
   v_ws uuid;
@@ -24,12 +24,12 @@ begin
   if v_user is null then raise exception 'No user with email %: sign up on the deployed app first', v_email; end if;
   select coalesce(nullif(p.name, ''), 'Team') into v_name from public.profiles p where p.id = v_user;
   select m.workspace_id into v_ws from public.workspace_members m where m.user_id = v_user order by m.created_at limit 1;
-  if exists (select 1 from public.projects where public_key = 'pk_basenine_demo_acme') then
+  if exists (select 1 from public.projects where public_key = 'pk_ac3e0000000000000000b9d1') then
     raise exception 'The demo project already exists';
   end if;
 
   insert into public.projects (workspace_id, name, site_url, public_key, allowed_origins, created_by)
-  values (v_ws, 'Acme Logistics (demo)', v_site, 'pk_basenine_demo_acme', array[v_site], v_user)
+  values (v_ws, 'Acme Logistics (demo)', v_site, 'pk_ac3e0000000000000000b9d1', array[v_site], v_user)
   returning id into v_project;
   insert into public.pages (project_id, url, title) values (v_project, v_site || '/', 'Home') returning id into v_page_home;
   insert into public.pages (project_id, url, title) values (v_project, v_site || '/pricing', 'Pricing') returning id into v_page_pricing;

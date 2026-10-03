@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const app = (process.env.APP_URL ?? "").replace(/\/$/, "");
 if (!/^https:\/\//.test(app)) throw new Error("Set APP_URL to the deployed app, e.g. https://basefeed.vercel.app");
-const key = process.env.DEMO_PROJECT_KEY ?? "pk_basenine_demo_acme";
+const key = process.env.DEMO_PROJECT_KEY ?? "pk_ac3e0000000000000000b9d1";
+// Same rule the widget loader enforces; a key it rejects would leave the site without feedback mode.
+if (!/^pk_[a-f0-9]{24}$/.test(key)) throw new Error(`Invalid project key: ${key}`);
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const out = new URL("dist/", import.meta.url);
