@@ -149,7 +149,7 @@ export function SearchButton() {
     >
       <Search aria-hidden className="size-3.5" />
       Search
-      <span className="rounded border border-white/15 px-1 font-mono text-[10px]">Ctrl K</span>
+      <span className="whitespace-nowrap rounded border border-white/15 px-1 font-mono text-[10px]">Ctrl K</span>
     </button>
   );
 }
