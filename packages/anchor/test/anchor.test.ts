@@ -117,6 +117,54 @@ describe("resolve", () => {
     expect(r.status === "suggested" && r.element).toBe(el);
   });
 
+  it("does not attach to a new wrapper inside the original when the original's text was extended", () => {
+    // Found by the property test in CI: the wrapper now holds exactly the original content and
+    // inherits its surroundings, while the original (still in place) only gained text.
+    const doc = page("<div><span>Learn more</span></div>");
+    const { el, anchor } = anchorOn(doc, "div");
+    const span = el.querySelector("span")!;
+    const wrapper = doc.createElement("div");
+    span.before(wrapper);
+    wrapper.append(span);
+    el.append(doc.createTextNode(" about our new pricing"));
+    const r = resolve(anchor, new DocIndex(doc));
+    expect(r.status === "attached" && r.element === wrapper).toBe(false);
+  });
+
+  it("does not attach to a new wrapper inside the original on 'evidence' from an empty page edge", () => {
+    const doc = page("<div></div><div><a>Learn more</a></div>");
+    const { el, anchor } = anchorOn(doc, "div", 1);
+    el.insertAdjacentHTML("afterbegin", "<p>New intro</p>");
+    const link = el.querySelector("a")!;
+    const wrapper = doc.createElement("div");
+    link.before(wrapper);
+    wrapper.append(link);
+    const r = resolve(anchor, new DocIndex(doc));
+    expect(r.status === "attached" && r.element === wrapper).toBe(false);
+  });
+
+  it("does not attach a bare container's comment to a wrapper that now holds it", () => {
+    const doc = page("<div><li><div><span>Learn more</span><a>Learn more</a></div></li><p>Learn more</p></div><div></div>");
+    const { el, anchor } = anchorOn(doc, "div");
+    const wrapper = doc.querySelectorAll("body > div")[1]!;
+    el.append(doc.createTextNode(" edited"));
+    wrapper.append(el);
+    doc.body.insertAdjacentHTML("afterbegin", "<p>New intro</p>");
+    const r = resolve(anchor, new DocIndex(doc));
+    expect(r.status === "attached" && r.element === wrapper).toBe(false);
+  });
+
+  it("does not attach to an identical empty twin moved into the card after the original was deleted", () => {
+    const doc = page("<button></button><div><button></button><p>Learn more</p></div>");
+    const { el, anchor } = anchorOn(doc, "button", 1);
+    const twin = doc.querySelectorAll("button")[0]!;
+    doc.querySelector("div")!.append(twin);
+    el.remove();
+    doc.body.insertAdjacentHTML("afterbegin", "<p>New intro</p>");
+    const r = resolve(anchor, new DocIndex(doc));
+    expect(r.status === "attached" && r.element === twin).toBe(false);
+  });
+
   it("detaches when nothing similar remains", () => {
     const doc = page(HERO);
     const { anchor } = anchorOn(doc, "h1");

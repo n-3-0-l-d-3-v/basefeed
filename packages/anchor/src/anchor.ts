@@ -138,8 +138,10 @@ function resolveScope(a: Anchor, idx: DocIndex): Element | null {
   const innermost = matches.filter((m) => !matches.some((o) => o !== m && m.contains(o)));
   if (innermost.length !== 1) return null;
   const scope = innermost[0]!;
-  // The container must also still sit in the same neighbourhood on at least one side.
-  if (!tailMatch(idx.prefix(scope), prefix) && !headMatch(idx.suffix(scope), suffix)) return null;
+  // The container must also still sit in the same neighbourhood on at least one side (an empty side,
+  // at the page edge, matches anything and proves nothing).
+  const near = (prefix.trim() && tailMatch(idx.prefix(scope), prefix)) || (suffix.trim() && headMatch(idx.suffix(scope), suffix));
+  if (!near) return null;
   const el = idx.followRelPath(scope, rel);
   return el && idx.key(el) === a.key ? el : null;
 }
@@ -164,11 +166,20 @@ function eligible(a: Anchor, el: Element, sig: Signal[], idx: DocIndex, candidat
   // a spacer) carry no identity — any emptied element would match — so they never qualify.
   const empty = a.text === "" && a.digest === "" && Object.keys(a.attrs).length === 0;
   if (a.unique && candidates === 1 && !empty) {
-    if (a.kind === "container") return sig.includes("path") || sig.includes("parent");
+    if (a.kind === "container") {
+      // No classes, attributes or text of its own: a classless wrapper around it (or inside it) has
+      // the same key and the same text, so with one nearby only exact structural agreement counts.
+      const bare = a.classes.length === 0 && Object.keys(a.attrs).length === 0 && a.text === "";
+      if (bare && hasNestedLookalike(a, el, idx)) return sig.includes("path") && sig.includes("parent");
+      return sig.includes("path") || sig.includes("parent");
+    }
     // A close variant of the original still on the page (edited in place, or re-wrapped) means this
     // candidate may be a copy or a new wrapper: demand exact structural agreement.
     if (hasNearVariant(a, el, idx)) return sig.includes("path") && sig.includes("parent");
-    if (sig.length > 0) return true;
+    if (sig.some((x) => (x !== "prefix" || a.prefix.trim()) && (x !== "suffix" || a.suffix.trim()))) return true;
+    // Only "nothing before/after it" (the page edge): a new wrapper inside the original matches that
+    // too, so it counts only when no such nesting is possible.
+    if (sig.length > 0) return !hasNestedLookalike(a, el, idx);
     // Content-only match: the element moved. Only for distinctive content.
     return isInformative(a);
   }
@@ -179,8 +190,23 @@ function eligible(a: Anchor, el: Element, sig: Signal[], idx: DocIndex, candidat
 
 const NEAR_VARIANT = 0.7;
 
+/** A same-tag element around or inside this one that also carries the anchor's content: a wrapper and what it wraps. */
+function hasNestedLookalike(a: Anchor, el: Element, idx: DocIndex): boolean {
+  return idx.withTag(a.tag).some((o) => {
+    if (o === el || !(o.contains(el) || el.contains(o))) return false;
+    return a.kind === "leaf" ? a.text !== "" && idx.text(o).includes(a.text) : dice(idx.digest(o), a.digest) >= CONTAINER_DIGEST_MIN;
+  });
+}
+
 function hasNearVariant(a: Anchor, el: Element, idx: DocIndex): boolean {
-  return idx.withTag(a.tag).some((o) => o !== el && dice(idx.text(o).slice(0, 500), a.text) >= NEAR_VARIANT);
+  return idx.withTag(a.tag).some((o) => {
+    if (o === el) return false;
+    const text = idx.text(o).slice(0, 500);
+    if (dice(text, a.text) >= NEAR_VARIANT) return true;
+    // The original still in its exact slot with text added: a short label plus a long addition falls
+    // under the similarity cut, yet a new wrapper inside it would now look exactly like the original.
+    return a.text !== "" && text !== a.text && text.includes(a.text) && idx.path(o) === a.path;
+  });
 }
 
 function attrsSimilarity(a: Record<string, string>, b: Record<string, string>): number {
