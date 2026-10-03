@@ -13,7 +13,7 @@ itself when a commented element has changed, so "is this fixed?" stops being a m
 | Comments drift onto the wrong element after edits or on mobile | Pins stored as "element #N in page order" plus page-level x/y % | Multi-signal anchoring (content, structure, surrounding text, parent). It either finds the same element or says it can't, and never guesses (see Guarantees) |
 | Previewed site runs with the app's own permissions | Proxied HTML served from the app's origin with `allow-scripts allow-same-origin` | Client sites stay on their own origin; dashboard ↔ widget talk only through origin-checked messages |
 | Clients need an account | — | Share links: name + email only, revocable, tokens scoped to one site |
-| Team has to explain, triage and re-check every comment | — | Auto-captured context, AI triage with human approval, automatic "changed since this comment" detection |
+| Team has to explain, triage and re-check every comment | — | Auto-captured context, AI triage that only flags what needs a person, automatic "changed since this comment" detection |
 
 ## Architecture
 
@@ -37,7 +37,7 @@ client site (any origin)                         app (Next.js 16)               
 
 ### Principles (same as the Figma → Webflow brief)
 
-- **AI for intent, code for execution.** AI only suggests a title, category, priority and an actionable task, and a human accepts or dismisses it. Anchoring, change detection, permissions and logging are deterministic code.
+- **AI for intent, code for execution.** AI labels each comment (a scannable title and a category) and flags what needs a person; anything a client would notice (a question to them, a changed priority, closing a duplicate) happens only on a human's click. Anchoring, change detection, permissions and logging are deterministic code.
 - **Never silently wrong.** Uncertain anchors are shown as "element changed" or "removed" instead of being moved to a guess.
 - **The database enforces isolation.** Row-level security on every table; the dashboard queries as the signed-in user.
 
@@ -60,7 +60,7 @@ Exact duplicates in identical positions are genuinely indistinguishable, and the
 ## Automation
 
 1. **Auto-context** on every comment: screenshot of the area (pin and outline drawn in), selector, Webflow classes, breakpoint, viewport, browser, OS.
-2. **AI triage** (Claude or Gemini, structured output, same prompt and schema): vague feedback becomes a task with a title, category, priority, a clarifying question when needed and duplicate detection. It runs in a retrying background job and appears live; nothing changes until a human accepts. If the provider is down or not configured, comments work exactly the same.
+2. **AI triage** (Claude or Gemini, structured output, same prompt and schema) that stays quiet unless it has something to add. A clear comment is labelled and left alone. It speaks up only for: a comment too vague to act on (one click sends the clarifying question to the author), a duplicate of an older comment (one click closes it into that thread), a priority that is clearly wrong ("button does nothing" filed as low), and requests that are new work rather than a tweak (scope and timeline). When the author dictates wording ("should say Book a demo", "$24 not $19") the exact replacement is extracted, ready to paste. It runs in a retrying background job; if the provider is down or not configured, comments work exactly the same.
 3. **"Changed since this comment"**: when a team member views a page, the widget compares each commented element with its snapshot (text, image, 20 tracked styles, size) at the same breakpoint and flags likely fixes: "font-size 16px → 20px. Verify & resolve".
 4. **Hand-off to coding agents**: "Copy for AI agent" exports markdown with selector, classes, DOM path, request, task and changes.
 

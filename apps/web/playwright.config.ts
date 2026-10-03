@@ -21,7 +21,8 @@ export default defineConfig({
     // CI tests the production build (and so also proves it builds); locally, reuse the dev server.
     process.env.CI
       ? { command: "pnpm build && pnpm start", url: "http://localhost:3000/login", timeout: 300_000 }
-      : { command: "pnpm dev", url: "http://localhost:3000/login", reuseExistingServer: true, timeout: 120_000 },
+      : // AI off for test runs it starts itself: the free AI quota is small and tests don't assert on triage.
+        { command: "pnpm dev", url: "http://localhost:3000/login", reuseExistingServer: true, timeout: 120_000, env: { AI_PROVIDER: "none" } },
     { command: "node ../../e2e/site/serve.mjs", url: "http://localhost:4000", reuseExistingServer: true },
   ],
 });
