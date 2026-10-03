@@ -26,6 +26,8 @@ jobs:
       # Unit + property tests: the "never attaches to a different element" guarantee.
       - run: pnpm --filter @bn/anchor test
       - run: pnpm --filter web test
+      # Figma → Webflow compiler core: reuse before creation, idempotency, naming rules.
+      - run: pnpm --filter @bn/compiler test
 
   e2e:
     name: Database and end-to-end

@@ -33,6 +33,7 @@ client site (any origin)                         app (Next.js 16)               
 - **`packages/widget`**: the embed. The loader decides whether to do anything; the app (Preact, Shadow DOM, mounted outside `<body>`) loads only in feedback mode.
 - **`packages/shared`**: Zod contracts shared by widget and server, and generated database types.
 - **`apps/web`**: dashboard (Canvas, Board, Settings), widget API, share links, AI triage, job runner.
+- **`packages/compiler`**: proof of concept for the Figma → Webflow build system: Figma nodes → semantic IR → Basenine rules engine → validated, idempotent build spec. See [docs/figma-to-webflow.md](docs/figma-to-webflow.md).
 - **`supabase/`**: schema, row-level security, triggers, job queue and rate limiting in SQL, plus pgTAP tests.
 
 ### Principles (same as the Figma → Webflow brief)
