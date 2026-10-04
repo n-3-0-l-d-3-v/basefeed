@@ -83,7 +83,8 @@ flowchart LR
 
 ### Around it
 
-- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved), Ctrl+K search, email notifications, team invites.
+- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved), Ctrl+K search, team invites.
+- **Email:** new comments, assignments and replies, each switchable per person. New comments can arrive as one digest a day instead of one email each.
 - **Connections:** outgoing webhooks (Slack, n8n, Zapier), a REST API and an MCP server for coding agents. See [Integrations](#integrations).
 
 ## Architecture
@@ -321,13 +322,13 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-132 automated tests, plus type checks and lint, on every push.
+141 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 25 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
-| Database | 55 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing |
-| End to end | 17 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, attachments, share links, sign-off by emailed link, invites, REST and MCP, webhooks, API security |
+| Database | 63 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests |
+| End to end | 18 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, attachments, share links, sign-off by emailed link, the daily digest, invites, REST and MCP, webhooks, API security |
 | Web | 12 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
 | Compiler | 14 | `pnpm --filter @bn/compiler test` | Reuse before creation, idempotency, deltas, naming validation, 300 random pages per run |
@@ -355,6 +356,6 @@ The demo client site deploys from `e2e/site` as its own Vercel project (set `APP
 - Screenshots are rendered from the DOM in the browser; cross-origin images without CORS headers may appear blank in them.
 - Sites that forbid framing (CSP `frame-ancestors`) cannot be shown inside the Canvas; feedback mode in a new tab works the same.
 - Change detection runs when a team member opens the page; there is no scheduled re-check yet.
-- One email per event; there is no digest.
+- The daily digest goes out at one fixed time (09:00 India time) and covers new comments only; assignments, replies and client sign-offs are always sent straight away.
 - Widget attachments are limited to 4 MB (10 MB from the dashboard).
 - Email confirmation on sign-up is not wired up; the demo deployment has it switched off.
