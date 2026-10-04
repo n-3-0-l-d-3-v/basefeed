@@ -77,6 +77,10 @@ begin
     insert into public.activity (project_id, comment_id, actor_user_id, actor_name, action)
     values (new.project_id, new.id, actor, actor_label, 'triage.' || new.triage_state);
   end if;
+  if new.anchor is distinct from old.anchor then
+    insert into public.activity (project_id, comment_id, actor_user_id, actor_name, action, meta)
+    values (new.project_id, new.id, actor, actor_label, 'comment.repinned', jsonb_build_object('from', old.anchor_state));
+  end if;
   return new;
 end;
 $$;
