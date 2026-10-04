@@ -10,7 +10,8 @@ type Payload =
   | { event: "reply.created"; reply_id: string }
   | { event: "review.requested"; comment_id: string }
   | { event: "review.rejected"; comment_id: string }
-  | { event: "digest"; user_id: string; since: string };
+  | { event: "digest"; user_id: string; since: string }
+  | { event: "review.reminder"; project_id: string; guest_id: string };
 
 type Pref = "new_comments" | "assignments" | "replies";
 type Recipient = { email: string; name: string; kind: "member" | "guest" };
@@ -161,6 +162,51 @@ ${sections.map(section).join("")}
   await deliver([recipient], `Daily digest: ${summary}`, () => ({ html, text: `${text}\n` }));
 }
 
+/** One email to a client listing everything of theirs still waiting for a Looks good / Not yet. */
+async function handleReminder(projectId: string, guestId: string): Promise<void> {
+  const admin = supabaseAdmin();
+  const [{ data: guest }, { data: project }, { data: rows }] = await Promise.all([
+    admin.from("guests").select("id, email, name").eq("id", guestId).eq("project_id", projectId).maybeSingle(),
+    admin.from("projects").select("id, name, archived_at").eq("id", projectId).maybeSingle(),
+    admin
+      .from("comments")
+      .select("id, number, body, project_id, page:pages(url, title)")
+      .eq("project_id", projectId)
+      .eq("author_guest_id", guestId)
+      .eq("status", "resolved")
+      .eq("client_review", "pending")
+      .order("number"),
+  ]);
+  // They may have answered between the reminder being queued and now.
+  const waiting = (rows ?? []) as unknown as { id: string; number: number; body: string; project_id: string; page: { url: string; title: string | null } }[];
+  if (!guest || !project || project.archived_at || waiting.length === 0) return;
+
+  const lines: { label: string; url: string }[] = [];
+  for (const c of waiting) lines.push({ label: `#${c.number} ${clip(c.body, 110)}`, url: await clientLink(c, guest) });
+  const status = await statusLink(projectId, guest.id);
+  const heading = waiting.length === 1 ? "One change is waiting for you to check" : `${waiting.length} changes are waiting for you to check`;
+  const cta = { label: waiting.length === 1 ? "Check it on the page" : "See them all", url: waiting.length === 1 || !status ? lines[0]!.url : status };
+
+  const html = `${SHELL_OPEN}
+<tr><td style="padding:20px 28px 0"><div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6b665e">${esc(project.name)} · a reminder</div>
+<h1 style="margin:8px 0 0;font-size:20px;font-weight:500;letter-spacing:-0.02em;line-height:1.3">${esc(heading)}</h1>
+<div style="margin-top:8px;font-size:14px;line-height:1.5;color:#6b665e">The team made these changes a few days ago. Open each one and choose Looks good or Not yet.</div></td></tr>
+<tr><td style="padding:12px 28px 0">${lines
+    .map((l) => `<div style="margin-top:8px;border-left:3px solid #ffacca;background:#fff0f5;border-radius:8px;padding:9px 12px;font-size:14px;line-height:1.45"><a href="${esc(l.url)}" style="color:#0a0a0a;text-decoration:none">${esc(l.label)}</a></div>`)
+    .join("")}</td></tr>
+<tr><td style="padding:22px 28px 28px"><a href="${esc(cta.url)}" style="display:inline-block;background:#96ff7c;color:#0a0a0a;text-decoration:none;font-weight:500;font-size:14px;padding:11px 18px;border-radius:10px">${esc(cta.label)}</a></td></tr>
+</table>
+<div style="max-width:520px;padding:14px 8px;font-size:12px;color:#6b665e">You are getting this because you left feedback on this site. This is the only reminder for these changes.</div>
+</td></tr></table></body></html>`;
+  const text = [
+    `${project.name}: ${heading}`,
+    "The team made these changes a few days ago. Open each one and choose Looks good or Not yet.",
+    lines.map((l) => `- ${l.label}\n  ${l.url}`).join("\n"),
+    ...(status ? [`${ALL_YOURS}: ${status}`] : []),
+  ].join("\n\n");
+  await deliver([{ email: guest.email, name: guest.name, kind: "guest" }], `Reminder: ${heading.toLowerCase()} on ${project.name}`, () => ({ html, text: `${text}\n` }));
+}
+
 async function deliver(recipients: Recipient[], subject: string, build: (r: Recipient) => { html: string; text: string }) {
   const seen = new Set<string>();
   for (const r of recipients) {
@@ -176,6 +222,7 @@ export async function handleNotify(p: Payload): Promise<void> {
   const admin = supabaseAdmin();
 
   if (p.event === "digest") return handleDigest(p.user_id, p.since);
+  if (p.event === "review.reminder") return handleReminder(p.project_id, p.guest_id);
 
   if (p.event === "comment.created") {
     const c = await loadComment(p.comment_id);
