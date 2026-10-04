@@ -418,6 +418,9 @@ isOneToOne: false
 "queue_daily_digests":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
+"queue_review_reminders":
+{ Args: { "p_after"?: string }; Returns: number
+                           },
 "queue_webhooks":
 { Args: { "p_actor": string,"p_comment": string,"p_event": string,"p_meta"?: Json,"p_project": string }; Returns: undefined
                            },
