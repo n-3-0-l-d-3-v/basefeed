@@ -48,14 +48,14 @@ export async function siteFrame(page: Page) {
   return site;
 }
 
-/** Plain-text body of the newest email to `to` that mentions `containing`. */
-export async function emailText(to: string, containing: string): Promise<string | null> {
+/** Plain-text body of the newest email to `to` that mentions every one of `containing`. */
+export async function emailText(to: string, ...containing: string[]): Promise<string | null> {
   const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
   if (!res.ok) return null;
   const { messages } = (await res.json()) as { messages: { ID: string }[] };
   for (const m of messages ?? []) {
     const full = (await (await fetch(`${MAILPIT}/api/v1/message/${m.ID}`)).json()) as { Text: string };
-    if (full.Text.includes(containing)) return full.Text;
+    if (containing.every((c) => full.Text.includes(c))) return full.Text;
   }
   return null;
 }

@@ -435,15 +435,29 @@ test.describe("clients via share link", () => {
     }
     const linkFor = async (text: string) => {
       let body: string | null = null;
-      await expect.poll(async () => (body = await emailText(email, text)), { timeout: 20_000 }).toContain("Does it look right?");
+      await expect.poll(async () => (body = await emailText(email, text, "Does it look right?")), { timeout: 20_000 }).not.toBeNull();
       return /Check it on the page: (\S+)/.exec(body!)![1]!;
     };
+
+    // If the client says nothing, nobody chases: after three days the database queues one reminder
+    // covering everything of theirs that is waiting. (Here with no waiting time, then the job runner.)
+    const service = { apikey: localEnv("SUPABASE_SERVICE_ROLE_KEY"), authorization: `Bearer ${localEnv("SUPABASE_SERVICE_ROLE_KEY")}` };
+    const remind = () => page.request.post(`${localEnv("NEXT_PUBLIC_SUPABASE_URL")}/rest/v1/rpc/queue_review_reminders`, { headers: service, data: { p_after: "0 seconds" } });
+    await linkFor(fixed); // both resolves have reached the database once their emails exist
+    await linkFor(notFixed);
+    expect(await (await remind()).json()).toBe(1);
+    expect((await page.request.get("/api/jobs/run", { headers: { authorization: `Bearer ${localEnv("CRON_SECRET")}` } })).ok()).toBe(true);
+    let reminder: string | null = null;
+    await expect.poll(async () => (reminder = await emailText(email, "2 changes are waiting for you to check")), { timeout: 20_000 }).toContain(fixed);
+    expect(reminder).toContain(notFixed);
+    expect(reminder).toContain("See where all your comments stand");
+    expect(await (await remind()).json()).toBe(0); // once only
 
     // The same email carries one link to everything this client has asked for and where it stands.
     client = await browser.newContext();
     guest = await client.newPage();
     await linkFor(fixed);
-    const statusUrl = /See where all your comments stand: (\S+)/.exec((await emailText(email, fixed))!)![1]!;
+    const statusUrl = /See where all your comments stand: (\S+)/.exec((await emailText(email, fixed, "Does it look right?"))!)![1]!;
     await guest.goto(statusUrl);
     await expect(guest.getByRole("heading", { name: "Your feedback, Robin Client" })).toBeVisible();
     const waiting = guest.getByRole("region", { name: /Waiting for you \(2\)/ });
@@ -489,6 +503,8 @@ test.describe("clients via share link", () => {
     await expect(detail.getByText("Sent back by Robin")).toBeVisible();
     await expect(detail.getByLabel("Status")).toHaveValue("open");
     await expect(detail.getByText("Still small on my laptop")).toBeVisible();
+    await detail.getByText(/^History/).click();
+    await expect(detail.getByText("Reminder emailed the client, who had not answered for three days")).toBeVisible();
 
     // The team can also hand the client that status page themselves: one click copies the link.
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
