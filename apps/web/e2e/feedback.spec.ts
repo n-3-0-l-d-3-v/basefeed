@@ -173,6 +173,35 @@ test.describe("team on the dashboard", () => {
     await expect(row.getByRole("button", { name: /^Add as a comment/ })).toHaveCount(0);
   });
 
+  test("an assignment rule sends each kind of comment to the right person, and says so in the history", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1400 });
+    await page.goto(`/p/${PROJECT}/settings`);
+    const rule = page.getByLabel(/^Bug/);
+    await rule.selectOption({ label: "Demo Designer" });
+    await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    await page.reload();
+    await expect(rule).toHaveValue(/.+/); // stored, not just chosen on screen
+
+    try {
+      // The page check files a dead link as a bug: nobody assigns it, the rule does.
+      await page.goto(`/p/${PROJECT}`);
+      const site = await siteFrame(page);
+      await site.getByRole("button", { name: "Check page" }).click();
+      const panel = site.getByRole("dialog", { name: "Page check" });
+      const row = panel.getByRole("listitem").filter({ hasText: 'The link "Learn more" goes nowhere' }).first();
+      await row.getByRole("button", { name: /^Add as a comment/ }).click();
+      const detail = page.getByRole("article", { name: /Comment \d+/ });
+      await expect(detail.getByRole("heading", { name: "Link goes nowhere" })).toBeVisible();
+      await expect(detail.getByLabel("Assignee").locator("option:checked")).toHaveText("Demo Designer");
+      await detail.getByText(/^History/).click();
+      await expect(detail.getByText("Assignment rule assigned it, because it is labelled bug")).toBeVisible();
+    } finally {
+      await page.goto(`/p/${PROJECT}/settings`);
+      await rule.selectOption({ label: "Nobody" });
+      await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+    }
+  });
+
   test("uploads a design image and pins a comment on it", async ({ page }, testInfo) => {
     const design = testInfo.outputPath("design.png");
     const shooter = await page.context().newPage();
