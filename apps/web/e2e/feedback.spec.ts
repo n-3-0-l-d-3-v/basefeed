@@ -433,9 +433,25 @@ test.describe("clients via share link", () => {
       return /Check it on the page: (\S+)/.exec(body!)![1]!;
     };
 
-    // The emailed link opens the page on that comment, already signed in as the client.
+    // The same email carries one link to everything this client has asked for and where it stands.
     client = await browser.newContext();
     guest = await client.newPage();
+    await linkFor(fixed);
+    const statusUrl = /See where all your comments stand: (\S+)/.exec((await emailText(email, fixed))!)![1]!;
+    await guest.goto(statusUrl);
+    await expect(guest.getByRole("heading", { name: "Your feedback, Robin Client" })).toBeVisible();
+    const waiting = guest.getByRole("region", { name: /Waiting for you \(2\)/ });
+    await expect(waiting.getByText(fixed)).toBeVisible();
+    await expect(waiting.getByText(notFixed)).toBeVisible();
+    await expect(guest.getByText("Internal")).toHaveCount(0); // only this client's own comments
+    // The status link is read-only: its token is not accepted where comments are written.
+    const asWidget = await page.request.get("/api/widget/me", { headers: { origin: SITE, authorization: `Bearer ${statusUrl.split("/").pop()}` } });
+    expect(asWidget.status()).toBe(401);
+    // A link that has been altered shows nothing.
+    await guest.goto(`${statusUrl.slice(0, -3)}abc`);
+    await expect(guest.getByText("Link not active")).toBeVisible();
+
+    // The emailed link opens the page on that comment, already signed in as the client.
     await guest.goto(await linkFor(fixed));
     await expect(guest.getByRole("dialog", { name: /Comment \d+/ }).getByText("Ready for you to check")).toBeVisible();
     await guest.getByRole("button", { name: "Looks good" }).click();
@@ -447,6 +463,15 @@ test.describe("clients via share link", () => {
     await thread.getByRole("textbox").fill("Still small on my laptop");
     await thread.getByRole("button", { name: "Not yet" }).click();
     await expect(guest.getByRole("status")).toContainText("Sent back to the team");
+
+    // The status page follows: one confirmed, one reopened with their note.
+    await guest.goto(statusUrl);
+    await expect(guest.getByRole("region", { name: /Done \(1\)/ }).getByRole("listitem")).toContainText([fixed]);
+    await expect(guest.getByRole("region", { name: /Done \(1\)/ })).toContainText("You confirmed this");
+    const reopened = guest.getByRole("region", { name: /Not started yet \(1\)/ });
+    await expect(reopened).toContainText(notFixed);
+    await expect(reopened).toContainText("Reopened after your note");
+    await expect(guest.getByRole("region", { name: /Waiting for you/ })).toHaveCount(0);
     await client.close();
 
     // The team sees both answers; the one sent back is open again with the client's note.
