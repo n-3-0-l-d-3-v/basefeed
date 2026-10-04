@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InstallSnippet } from "@/components/install-snippet";
 import { getProject, getSession } from "@/lib/data";
 import { env } from "@/lib/env";
-import { OriginsForm, ProjectForm, ShareLinks } from "./forms";
+import { OriginsForm, ProjectForm, ShareLinks, Webhooks } from "./forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -27,6 +27,12 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     .select("id, label, created_at, expires_at, revoked_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
+
+  const { data: hooks } = await supabase
+    .from("webhooks")
+    .select("id, url, secret, events, last_status, last_error, last_delivered_at")
+    .eq("project_id", projectId)
+    .order("created_at");
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-3 pb-16 pt-1">
@@ -60,6 +66,12 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         description="Share a link so clients can comment with just their name and email: no account, no password. Turn a link off at any time."
       >
         <ShareLinks projectId={project.id} links={links ?? []} />
+      </Section>
+      <Section
+        title="Webhooks"
+        description="Send what happens here to Slack, n8n, Zapier or your own service: new comments, status changes, AI flags, client sign-off. Each delivery is signed and retried."
+      >
+        <Webhooks projectId={project.id} hooks={hooks ?? []} />
       </Section>
       <Section title="Project" description="Name and the Figma file the site is built from.">
         <ProjectForm projectId={project.id} name={project.name} figmaUrl={project.figma_url} />

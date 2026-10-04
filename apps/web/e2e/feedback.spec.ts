@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { createHmac } from "node:crypto";
+import { createServer } from "node:http";
 import { emailText, inbox, login, PROJECT, SITE, siteFrame, unique } from "./helpers";
 
 test.describe("site visitors", () => {
@@ -481,5 +483,56 @@ test.describe("API for coding agents", () => {
     await page.getByRole("listitem").filter({ hasText: tokenName }).getByRole("button", { name: "Revoke" }).click();
     await expect(page.getByRole("listitem").filter({ hasText: tokenName })).toContainText("revoked");
     expect((await request.get("/api/v1/feedback", { headers: auth })).status()).toBe(401);
+  });
+});
+
+test.describe("webhooks", () => {
+  test("a project announces its events to a URL, signed, and a test delivery proves the connection", async ({ page }) => {
+    // A stand-in for Slack, n8n or Zapier: records what it is sent.
+    const received: { event: string; signature: string; body: string }[] = [];
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        received.push({ event: String(req.headers["x-basenine-event"]), signature: String(req.headers["x-basenine-signature"]), body });
+        res.writeHead(200).end("ok");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(4011, resolve));
+    const url = `http://localhost:4011/hook-${Date.now().toString(36)}`;
+    try {
+      await login(page);
+      await page.goto(`/p/${PROJECT}/settings`);
+      await page.getByLabel("Webhook URL").fill(url);
+      await page.getByRole("button", { name: "Add webhook" }).click();
+      const row = page.getByRole("listitem").filter({ hasText: url });
+      await row.getByRole("button", { name: "Send test" }).click();
+      await expect(row).toContainText("Test delivered (HTTP 200)");
+
+      // The receiver can prove the request came from this project: the body is signed with its secret.
+      await row.getByRole("button", { name: "Signing secret" }).click();
+      const secret = (await row.locator("span.break-all").textContent())!;
+      const ping = received.find((r) => r.event === "ping")!;
+      expect(ping.signature).toBe(`sha256=${createHmac("sha256", secret).update(ping.body).digest("hex")}`);
+
+      // A real event: a new comment arrives with a ready sentence and a link back.
+      const text = unique("Shorten this call to action");
+      await page.goto(`/p/${PROJECT}`);
+      const site = await siteFrame(page);
+      await site.locator(".section_cta h2").click();
+      await site.getByPlaceholder("What should change?").fill(text);
+      await site.getByRole("button", { name: "Send" }).click();
+      await expect.poll(() => received.find((r) => r.event === "comment.created" && r.body.includes(text))?.body ?? "", { timeout: 20_000 }).not.toBe("");
+      const event = JSON.parse(received.find((r) => r.event === "comment.created" && r.body.includes(text))!.body);
+      expect(event.text).toMatch(/^New comment #\d+ on .+ from .+: "/);
+      expect(event.comment.url).toContain(`/p/${PROJECT}?page=`);
+      expect(event.comment.element).toBeTruthy();
+
+      await page.goto(`/p/${PROJECT}/settings`);
+      await page.getByRole("listitem").filter({ hasText: url }).getByRole("button", { name: "Remove" }).click();
+      await expect(page.getByRole("listitem").filter({ hasText: url })).toHaveCount(0);
+    } finally {
+      server.close();
+    }
   });
 });

@@ -2,8 +2,9 @@ import { handleNotify } from "./notify";
 import { supabaseAdmin } from "./supabase/server";
 import { runTriage, triageProvider } from "./triage";
 import { PermanentTriageError } from "./triage/types";
+import { deliverWebhook } from "./webhooks";
 
-export type JobKind = "triage" | "notify";
+export type JobKind = "triage" | "notify" | "webhook";
 
 interface Handler {
   run(payload: Record<string, unknown>): Promise<void>;
@@ -20,6 +21,10 @@ const handlers: Record<JobKind, Handler> = {
   },
   notify: {
     run: (p) => handleNotify(p as Parameters<typeof handleNotify>[0]),
+    giveUp: async () => {},
+  },
+  webhook: {
+    run: (p) => deliverWebhook(p as unknown as Parameters<typeof deliverWebhook>[0]),
     giveUp: async () => {},
   },
 };
@@ -70,6 +75,6 @@ export async function runJobs(kind: JobKind, limit = 5): Promise<{ done: number;
 
 /** Process whatever is ready, of every kind. Safe to call often: claiming is atomic. */
 export async function drainJobs(limit = 10) {
-  const [triage, notify] = await Promise.all([runJobs("triage", limit), runJobs("notify", limit)]);
-  return { triage, notify };
+  const [triage, notify, webhook] = await Promise.all([runJobs("triage", limit), runJobs("notify", limit), runJobs("webhook", limit)]);
+  return { triage, notify, webhook };
 }

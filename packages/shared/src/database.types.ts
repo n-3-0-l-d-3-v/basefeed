@@ -276,6 +276,25 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"webhooks": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"events": (string)[],"id": string,"last_delivered_at": string | null,"last_error": string | null,"last_status": number | null,"project_id": string,"secret": string,"url": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"events"?: (string)[],"id"?: string,"last_delivered_at"?: string | null,"last_error"?: string | null,"last_status"?: number | null,"project_id": string,"secret"?: string,"url": string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"events"?: (string)[],"id"?: string,"last_delivered_at"?: string | null,"last_error"?: string | null,"last_status"?: number | null,"project_id"?: string,"secret"?: string,"url"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "webhooks_project_id_fkey"
+      columns: ["project_id"]
+isOneToOne: false
+      referencedRelation: "projects"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"workspace_invites": {
                   Row: {
                     "created_at": string,"created_by": string | null,"expires_at": string,"id": string,"revoked_at": string | null,"role": Database["public"]['Enums']["member_role"],"token_hash": string,"workspace_id": string
@@ -376,6 +395,9 @@ isOneToOne: false
                            },
 "is_member":
 { Args: { "ws": string }; Returns: boolean
+                           },
+"queue_webhooks":
+{ Args: { "p_actor": string,"p_comment": string,"p_event": string,"p_meta"?: Json,"p_project": string }; Returns: undefined
                            },
 "review_comment_as_guest":
 { Args: { "p_approved": boolean,"p_comment": string,"p_guest": string,"p_note"?: string,"p_project": string }; Returns: undefined

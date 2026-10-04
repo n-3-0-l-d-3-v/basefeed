@@ -11,6 +11,7 @@ import { env } from "@/lib/env";
 import { drainJobs, enqueueTriage } from "@/lib/jobs";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { normalizePageUrl, originOf } from "@/lib/urls";
+import { deliverWebhook, WEBHOOK_EVENTS, webhookUrlProblem } from "@/lib/webhooks";
 import { signWidgetToken } from "@/lib/widget/token";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -187,6 +188,44 @@ export async function createShareLink(projectId: string, label: string, days: nu
   return ok({ url: `${env().APP_URL}/s/${token}` });
 }
 
+// ---------------------------------------------------------------- webhooks
+
+export async function createWebhook(projectId: string, url: string, events: string[]): Promise<Result> {
+  const ctx = await projectFor(projectId);
+  if (!ctx) return fail("Project not found.");
+  const problem = webhookUrlProblem(url.trim());
+  if (problem) return fail(problem);
+  const chosen = events.filter((e) => e in WEBHOOK_EVENTS);
+  // Every event selected is stored as "all", so events added later are included too.
+  const stored = chosen.length === Object.keys(WEBHOOK_EVENTS).length ? [] : chosen;
+  if (chosen.length === 0) return fail("Choose at least one event.");
+  const { error } = await ctx.supabase.from("webhooks").insert({ project_id: projectId, url: url.trim(), events: stored, created_by: ctx.user.id });
+  if (error) return fail("Couldn't add the webhook.");
+  revalidatePath(`/p/${projectId}/settings`);
+  return ok(undefined);
+}
+
+export async function deleteWebhook(projectId: string, webhookId: string): Promise<Result> {
+  const ctx = await projectFor(projectId);
+  if (!ctx || !Id.safeParse(webhookId).success) return fail("Webhook not found.");
+  const { error } = await ctx.supabase.from("webhooks").delete().eq("id", webhookId).eq("project_id", projectId);
+  if (error) return fail("Couldn't remove the webhook.");
+  revalidatePath(`/p/${projectId}/settings`);
+  return ok(undefined);
+}
+
+/** Send a "ping" now and report what the receiver answered. */
+export async function testWebhook(projectId: string, webhookId: string): Promise<Result<{ status: number | null; error: string | null }>> {
+  const ctx = await projectFor(projectId);
+  if (!ctx || !Id.safeParse(webhookId).success) return fail("Webhook not found.");
+  const { data: hook } = await ctx.supabase.from("webhooks").select("id").eq("id", webhookId).eq("project_id", projectId).maybeSingle();
+  if (!hook) return fail("Webhook not found.");
+  await deliverWebhook({ webhook_id: hook.id, event: "ping", actor: ctx.profile.name }).catch(() => {});
+  const { data } = await ctx.supabase.from("webhooks").select("last_status, last_error").eq("id", hook.id).single();
+  revalidatePath(`/p/${projectId}/settings`);
+  return ok({ status: data?.last_status ?? null, error: data?.last_error ?? null });
+}
+
 export async function revokeShareLink(projectId: string, linkId: string): Promise<Result> {
   const ctx = await projectFor(projectId);
   if (!ctx || !Id.safeParse(linkId).success) return fail("Link not found.");
@@ -214,8 +253,8 @@ export async function updateComment(commentId: string, patch: z.input<typeof Pat
   if (!parsed.success || !Id.safeParse(commentId).success) return fail("Invalid change.");
   const { data, error } = await supabase.from("comments").update(parsed.data).eq("id", commentId).select("id");
   if (error || !data?.length) return fail("Couldn't update the comment.");
-  // Assigning someone, or resolving a client's comment, queues an email.
-  if (parsed.data.assignee_id || parsed.data.status === "resolved") after(() => drainJobs());
+  // Assigning someone or changing status queues an email or a webhook.
+  if (parsed.data.assignee_id || parsed.data.status) after(() => drainJobs());
   return ok(undefined);
 }
 

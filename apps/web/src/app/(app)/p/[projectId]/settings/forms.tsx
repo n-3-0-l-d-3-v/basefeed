@@ -1,9 +1,10 @@
 "use client";
 
+import { Ago } from "@/components/ago";
 import { useState, useTransition } from "react";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
-import { ago } from "@/lib/export";
-import { createShareLink, revokeShareLink, setOrigins, updateProject } from "../../../actions";
+import { WEBHOOK_EVENTS } from "@/lib/webhook-events";
+import { createShareLink, createWebhook, deleteWebhook, revokeShareLink, setOrigins, testWebhook, updateProject } from "../../../actions";
 
 function Status({ error, saved }: { error: string | null; saved: boolean }) {
   if (error)
@@ -150,7 +151,7 @@ export function ShareLinks({ projectId, links }: { projectId: string; links: Lin
             return (
               <li key={l.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                 <span className="min-w-0 flex-1 truncate">{l.label || "Untitled link"}</span>
-                <span className="hidden text-xs text-muted sm:inline">created {ago(l.created_at)}</span>
+                <span className="hidden text-xs text-muted sm:inline">created <Ago iso={l.created_at} /></span>
                 <Badge tone={state === "active" ? "accent" : "neutral"}>{state}</Badge>
                 {state === "active" && (
                   <button
@@ -206,5 +207,116 @@ export function ProjectForm({ projectId, name, figmaUrl }: { projectId: string; 
         <Status error={error} saved={saved} />
       </div>
     </form>
+  );
+}
+
+type Hook = { id: string; url: string; secret: string; events: string[]; last_status: number | null; last_error: string | null; last_delivered_at: string | null };
+
+export function Webhooks({ projectId, hooks }: { projectId: string; hooks: Hook[] }) {
+  const all = Object.keys(WEBHOOK_EVENTS);
+  const [url, setUrl] = useState("");
+  const [events, setEvents] = useState<string[]>(all);
+  const [error, setError] = useState<string | null>(null);
+  const [tested, setTested] = useState<Record<string, string>>({});
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          start(async () => {
+            const r = await createWebhook(projectId, url, events);
+            if (!r.ok) return setError(r.error);
+            setError(null);
+            setUrl("");
+            setEvents(all);
+          });
+        }}
+      >
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-56 flex-1">
+            <Field label="Webhook URL" htmlFor="hook-url">
+              <Input id="hook-url" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://hooks.slack.com/services/…" maxLength={2048} />
+            </Field>
+          </div>
+          <Button type="submit" variant="primary" disabled={pending || !url.trim()}>
+            Add webhook
+          </Button>
+        </div>
+        <fieldset className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+          <legend className="eyebrow mb-1.5">Send when</legend>
+          {Object.entries(WEBHOOK_EVENTS).map(([id, label]) => (
+            <label key={id} className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={events.includes(id)} onChange={(e) => setEvents((list) => (e.target.checked ? [...list, id] : list.filter((x) => x !== id)))} />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      </form>
+
+      {error && (
+        <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
+          {error}
+        </p>
+      )}
+
+      {hooks.length > 0 && (
+        <ul className="divide-y divide-line overflow-hidden rounded-lg ring-1 ring-line">
+          {hooks.map((h) => {
+            const state = tested[h.id] ?? (!h.last_delivered_at ? "Nothing sent yet" : h.last_error ? `Last delivery failed: ${h.last_error}` : null);
+            return (
+              <li key={h.id} className="flex flex-col gap-2 px-3 py-2.5 text-[13px]">
+                <div className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-[12px]">{h.url}</span>
+                    <span className="block text-[12px] text-muted">
+                      {h.events.length ? `${h.events.length} of ${all.length} events` : "All events"} · {state ?? <>Last delivered <Ago iso={h.last_delivered_at!} /></>}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 hover:bg-sunken"
+                    onClick={() =>
+                      start(async () => {
+                        const r = await testWebhook(projectId, h.id);
+                        setTested((t) => ({ ...t, [h.id]: !r.ok ? r.error : r.data.error ? `Test failed: ${r.data.error}` : `Test delivered (HTTP ${r.data.status})` }));
+                      })
+                    }
+                  >
+                    Send test
+                  </button>
+                  <button type="button" className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 hover:bg-sunken" onClick={() => setRevealed(revealed === h.id ? null : h.id)}>
+                    {revealed === h.id ? "Hide secret" : "Signing secret"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded-md px-2 py-1 text-[12px] font-medium text-muted hover:bg-danger-soft hover:text-danger"
+                    onClick={() =>
+                      start(async () => {
+                        const r = await deleteWebhook(projectId, h.id);
+                        if (!r.ok) setError(r.error);
+                      })
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+                {revealed === h.id && (
+                  <p className="text-[12px] text-muted">
+                    Each request carries <span className="font-mono text-ink-2">X-Basenine-Signature: sha256=…</span>, the HMAC-SHA256 of the body with this secret:{" "}
+                    <span className="break-all font-mono text-ink-2">{h.secret}</span>
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
