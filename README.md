@@ -226,7 +226,7 @@ Property-based tests generate thousands of random pages full of duplicates ("Lea
 classes, repeated images), pin a comment, apply random edits (insert, delete, wrap, move, rename
 classes, edit text, duplicate, delete the target) and check where the pin ended up.
 
-- **A comment is only ever attached to the element it was made on, or to an exact duplicate the page gives no way to tell apart.** 3,000 random edit sequences per CI run. So far these runs have found five ways a new wrapper or an empty twin could be mistaken for the original; each is fixed and pinned as its own regression test, and 20,000 further sequences after the latest fix found nothing. A failed run prints the page and the edits, and `ANCHOR_REPLAY` replays them.
+- **A comment is only ever attached to the element it was made on, or to an exact duplicate the page gives no way to tell apart.** 3,000 random edit sequences per CI run. So far these runs have found six ways a new wrapper or a twin could be mistaken for the original; each is fixed and pinned as its own regression test. The search is random, so a seventh may exist: when a run fails, it prints the page and the edits, and `ANCHOR_REPLAY` replays them.
 - Through ordinary edits elsewhere on the page:
   - distinctive content (headings, paragraphs, images): **about 90% stay attached automatically**, 99.9% attached or correctly suggested
   - repeated elements: 64% attached automatically, 98.4% attached or correctly suggested. Repeated elements inside a distinctive container (the usual card grid) are found through that container.
@@ -326,11 +326,11 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-154 automated tests, plus type checks and lint, on every push.
+155 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
-| Anchoring | 26 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
+| Anchoring | 27 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
 | Database | 74 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules |
 | End to end | 19 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client status page, the daily digest, invites, REST and MCP, webhooks, API security |
 | Web | 12 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety |
