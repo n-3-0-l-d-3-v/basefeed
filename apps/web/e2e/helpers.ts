@@ -22,6 +22,14 @@ export async function login(page: Page) {
   await expect(page).toHaveURL("http://localhost:3000/");
 }
 
+/** A value from the app's local environment file (the same one the dev server reads). */
+export function localEnv(key: string): string {
+  const file = readFileSync(join(__dirname, "../.env.local"), "utf8");
+  const m = new RegExp(`^${key}=(.*)$`, "m").exec(file);
+  if (!m) throw new Error(`${key} not found in apps/web/.env.local`);
+  return m[1]!.trim().replace(/^["']|["']$/g, "");
+}
+
 export const unique = (label: string) => `${label} ${Date.now().toString(36)}`;
 
 /** Local Supabase's Mailpit inbox, where development email is delivered. */

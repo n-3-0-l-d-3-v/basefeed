@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
-import { emailText, inbox, login, PROJECT, SITE, siteFrame, unique } from "./helpers";
+import { emailText, inbox, localEnv, login, PROJECT, SITE, siteFrame, unique } from "./helpers";
 
 test.describe("site visitors", () => {
   test("ordinary visitors get only the 1 KB loader and no widget", async ({ page }) => {
@@ -302,6 +302,64 @@ test.describe("clients via share link", () => {
     await page.getByLabel("Reply").fill(answer);
     await page.getByRole("button", { name: "Reply", exact: true }).click();
     await expect.poll(async () => (await inbox("casey@client.test")).some((m) => m.Snippet.includes(answer)), { timeout: 20_000 }).toBe(true);
+  });
+
+  test("a member who chose the daily digest gets one email for the day instead of one per comment", async ({ page, browser, request }) => {
+    await login(page);
+    await page.goto("/account");
+    const digest = page.getByRole("switch", { name: /Once a day instead/ });
+    await page.getByText("Once a day instead").click();
+    await expect(digest).toBeChecked();
+    await page.reload(); // saved, not just toggled on screen
+    await expect(digest).toBeChecked();
+
+    try {
+      await page.goto(`/p/${PROJECT}/settings`);
+      await page.getByLabel("Label").fill("E2E digest");
+      await page.getByRole("button", { name: "Create link" }).click();
+      const link = await page.locator('input[readonly][value*="/s/"]').first().inputValue();
+
+      const client = await browser.newContext();
+      const guest = await client.newPage();
+      await guest.goto(link);
+      await guest.getByLabel("Your name").fill("Dana Client");
+      await guest.getByLabel("Email").fill("dana@client.test");
+      await guest.getByRole("button", { name: /start reviewing/i }).click();
+      await expect(guest.getByRole("toolbar", { name: "Feedback" })).toBeVisible();
+      const first = unique("Footer links are hard to read");
+      const second = unique("Swap the hero image");
+      await guest.getByRole("button", { name: "Comment", exact: true }).click();
+      for (const [target, text] of [[".section_cta h2", first], [".section_features h2", second]] as const) {
+        await guest.locator(target).click();
+        await guest.getByPlaceholder("What should change?").fill(text);
+        await guest.getByRole("button", { name: "Send" }).click();
+        await expect(guest.getByRole("status")).toContainText(/Comment #\d+ added/);
+      }
+      await client.close();
+
+      // What the database does every morning (pg_cron), then what its ticker does: call the job runner.
+      const queued = await request.post(`${localEnv("NEXT_PUBLIC_SUPABASE_URL")}/rest/v1/rpc/queue_daily_digests`, {
+        headers: { apikey: localEnv("SUPABASE_SERVICE_ROLE_KEY"), authorization: `Bearer ${localEnv("SUPABASE_SERVICE_ROLE_KEY")}` },
+        data: {},
+      });
+      expect(await queued.json()).toBe(1);
+      const ran = await request.get("/api/jobs/run", { headers: { authorization: `Bearer ${localEnv("CRON_SECRET")}` } });
+      expect(ran.ok()).toBe(true);
+
+      let body: string | null = null;
+      await expect.poll(async () => (body = await emailText("demo@basenine.test", "Daily digest")), { timeout: 20_000 }).toContain(first);
+      expect(body).toContain(second); // both comments, one email
+      expect(body).toContain("Dana Client (client)");
+      // ...and neither comment was also sent on its own.
+      const subjects = (await inbox("demo@basenine.test")).filter((m) => m.Snippet.includes(first) || m.Snippet.includes(second)).map((m) => m.Subject);
+      expect(subjects.filter((s) => s.startsWith("New comment"))).toEqual([]);
+    } finally {
+      await page.goto("/account");
+      if (await digest.isChecked()) await page.getByText("Once a day instead").click();
+      await expect(digest).not.toBeChecked();
+      await page.reload();
+      await expect(digest).not.toBeChecked();
+    }
   });
 
   test("a resolved comment goes back to the client, who confirms it or sends it back from the emailed link", async ({ page, browser }) => {
