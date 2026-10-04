@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint src e2e --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src"
+    "test": "vitest run src",
+    "screens": "playwright test -c playwright.screens.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
