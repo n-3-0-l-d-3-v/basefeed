@@ -80,6 +80,7 @@ flowchart LR
 
 - **Change detection.** When a commented element changes ("font-size 56px → 48px"), the comment is flagged as likely fixed. When the element is edited beyond recognition or removed, the comment says so, and a team member can re-pin it.
 - **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note.
+- **Client status page.** Every email to a client carries one link to a read-only page listing each comment they left and where it stands: waiting for them, being worked on, not started, done. No account.
 - **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. Counted from the data, never estimated.
 
 ### Around it
@@ -213,6 +214,7 @@ One Postgres table is the queue for AI triage, email and webhooks. Workers claim
 | Dashboard | Supabase Auth session; every query runs under row-level security |
 | Widget API | JWT (HS256, 12 h) scoped to one person, one project and one origin; re-checked against the database on every request, so removing a member or switching off a share link takes effect immediately; per-person rate limit |
 | Client email links | The same token, 7 days, valid only while the project still has an active share link |
+| Client status page | A separate read-only token (30 days) for one client on one project; not accepted by any write endpoint; dead as soon as the share link is turned off |
 | REST API and MCP | Personal tokens (`bnf_…`), stored only as a hash, revocable; every query scoped to the workspaces the owner belongs to today; per-token rate limit |
 | Webhooks | HTTPS only; loopback, link-local and private addresses refused; redirects not followed; body signed with HMAC-SHA256 |
 | Client sites | Stay on their own origin; the dashboard exchanges only origin-checked messages with the widget; nothing may frame the dashboard |
@@ -330,7 +332,7 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 |---|---|---|---|
 | Anchoring | 25 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
 | Database | 74 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules |
-| End to end | 19 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the daily digest, invites, REST and MCP, webhooks, API security |
+| End to end | 19 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client status page, the daily digest, invites, REST and MCP, webhooks, API security |
 | Web | 12 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
 | Compiler | 14 | `pnpm --filter @bn/compiler test` | Reuse before creation, idempotency, deltas, naming validation, 300 random pages per run |
