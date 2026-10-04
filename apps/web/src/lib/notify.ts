@@ -2,7 +2,7 @@ import { sendEmail } from "./email";
 import { env } from "./env";
 import { supabaseAdmin } from "./supabase/server";
 import { originOf } from "./urls";
-import { signWidgetToken } from "./widget/token";
+import { signStatusToken, signWidgetToken } from "./widget/token";
 
 type Payload =
   | { event: "comment.created"; comment_id: string }
@@ -57,16 +57,29 @@ function commentLink(c: { project_id: string; page_id: string; id: string }) {
  * was emailed to. It only works while the project still has an active share link, so turning
  * client access off also turns these off; without one the client just gets the page.
  */
-async function clientLink(c: { id: string; project_id: string; page: { url: string } }, guest: { id: string; name: string }): Promise<string> {
+export async function clientLink(c: { id: string; project_id: string; page: { url: string } }, guest: { id: string; name: string }): Promise<string> {
   const origin = originOf(c.page.url);
-  const { data: links } = await supabaseAdmin().from("share_links").select("id, expires_at").eq("project_id", c.project_id).is("revoked_at", null);
-  const link = (links ?? []).find((l) => !l.expires_at || Date.parse(l.expires_at) > Date.now());
+  const link = await activeShareLink(c.project_id);
   if (!origin || !link) return c.page.url;
   const token = await signWidgetToken({ sub: guest.id, kind: "guest", pid: c.project_id, org: origin, name: guest.name, sl: link.id }, "7d");
   return `${c.page.url}#bn_token=${encodeURIComponent(token)}&bn_c=${c.id}`;
 }
 
-function layout(o: { eyebrow: string; heading: string; quote: string; meta: string; cta: { label: string; url: string } }) {
+async function activeShareLink(projectId: string) {
+  const { data: links } = await supabaseAdmin().from("share_links").select("id, expires_at").eq("project_id", projectId).is("revoked_at", null);
+  return (links ?? []).find((l) => !l.expires_at || Date.parse(l.expires_at) > Date.now()) ?? null;
+}
+
+/** The client's status page: every comment they left on this project and where it stands. Null when client access is off. */
+export async function statusLink(projectId: string, guestId: string): Promise<string | null> {
+  const link = await activeShareLink(projectId);
+  if (!link) return null;
+  return `${env().APP_URL}/s/status/${await signStatusToken({ sub: guestId, pid: projectId, sl: link.id })}`;
+}
+
+const ALL_YOURS = "See where all your comments stand";
+
+function layout(o: { eyebrow: string; heading: string; quote: string; meta: string; cta: { label: string; url: string }; also?: { label: string; url: string } | null }) {
   const html = `<!doctype html><html><body style="margin:0;background:#fffef4;font-family:Satoshi,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0a0a0a">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;box-shadow:0 0 0 1px #e9e6d8">
@@ -75,11 +88,13 @@ function layout(o: { eyebrow: string; heading: string; quote: string; meta: stri
 <h1 style="margin:8px 0 0;font-size:20px;font-weight:500;letter-spacing:-0.02em;line-height:1.3">${esc(o.heading)}</h1></td></tr>
 <tr><td style="padding:16px 28px 0"><div style="border-left:3px solid #ffacca;background:#fff0f5;border-radius:8px;padding:12px 14px;font-size:15px;line-height:1.55;white-space:pre-wrap">${esc(o.quote)}</div>
 <div style="margin-top:10px;font-size:13px;color:#6b665e">${esc(o.meta)}</div></td></tr>
-<tr><td style="padding:22px 28px 28px"><a href="${esc(o.cta.url)}" style="display:inline-block;background:#96ff7c;color:#0a0a0a;text-decoration:none;font-weight:500;font-size:14px;padding:11px 18px;border-radius:10px">${esc(o.cta.label)}</a></td></tr>
+<tr><td style="padding:22px 28px 28px"><a href="${esc(o.cta.url)}" style="display:inline-block;background:#96ff7c;color:#0a0a0a;text-decoration:none;font-weight:500;font-size:14px;padding:11px 18px;border-radius:10px">${esc(o.cta.label)}</a>${
+    o.also ? `<div style="margin-top:14px;font-size:13px"><a href="${esc(o.also.url)}" style="color:#6b665e">${esc(o.also.label)}</a></div>` : ""
+  }</td></tr>
 </table>
-<div style="max-width:520px;padding:14px 8px;font-size:12px;color:#6b665e">You can turn these emails off in Basenine Feedback → Account.</div>
+<div style="max-width:520px;padding:14px 8px;font-size:12px;color:#6b665e">${o.also ? "You are getting this because you left feedback on this site." : "You can turn these emails off in Basenine Feedback → Account."}</div>
 </td></tr></table></body></html>`;
-  const text = `${o.eyebrow}\n\n${o.heading}\n\n"${o.quote}"\n${o.meta}\n\n${o.cta.label}: ${o.cta.url}\n`;
+  const text = `${o.eyebrow}\n\n${o.heading}\n\n"${o.quote}"\n${o.meta}\n\n${o.cta.label}: ${o.cta.url}\n${o.also ? `${o.also.label}: ${o.also.url}\n` : ""}`;
   return { html, text };
 }
 
@@ -201,6 +216,7 @@ export async function handleNotify(p: Payload): Promise<void> {
     const { data: guest } = await admin.from("guests").select("id, email, name").eq("id", c.author_guest_id).maybeSingle();
     if (!guest) return;
     const url = await clientLink(c, guest);
+    const status = await statusLink(c.project_id, guest.id);
     await deliver([{ email: guest.email, name: guest.name, kind: "guest" }], `Done on ${c.project.name}: does this look right?`, () =>
       layout({
         eyebrow: `${c.project.name} · ready for you to check`,
@@ -208,6 +224,7 @@ export async function handleNotify(p: Payload): Promise<void> {
         quote: clip(c.body, 600),
         meta: "Open the page and choose Looks good or Not yet on your comment.",
         cta: { label: "Check it on the page", url },
+        also: status ? { label: ALL_YOURS, url: status } : null,
       }),
     );
     return;
@@ -238,11 +255,13 @@ export async function handleNotify(p: Payload): Promise<void> {
   const recipients = await members(memberIds, "replies");
   // Clients who commented through a share link gave their email so the team could answer them.
   let guestUrl = c.page.url;
+  let guestStatus: string | null = null;
   if (c.author_guest_id && c.author_guest_id !== reply.author_guest_id) {
     const { data: guest } = await admin.from("guests").select("id, email, name").eq("id", c.author_guest_id).maybeSingle();
     if (guest) {
       recipients.push({ email: guest.email, name: guest.name, kind: "guest" });
       guestUrl = await clientLink(c, guest);
+      guestStatus = await statusLink(c.project_id, guest.id);
     }
   }
   await deliver(recipients, `${reply.author_name} replied to #${c.number} on ${c.project.name}`, (r) =>
@@ -252,6 +271,7 @@ export async function handleNotify(p: Payload): Promise<void> {
       quote: clip(reply.body, 600),
       meta: `On: "${clip(c.body, 120)}"`,
       cta: r.kind === "guest" ? { label: "Reply on the page", url: guestUrl } : { label: "Open the conversation", url: commentLink(c) },
+      also: r.kind === "guest" && guestStatus ? { label: ALL_YOURS, url: guestStatus } : null,
     }),
   );
 }
