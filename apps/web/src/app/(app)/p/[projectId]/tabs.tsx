@@ -1,6 +1,6 @@
 "use client";
 
-import { KanbanSquare, MousePointerClick, Settings2 } from "lucide-react";
+import { Gauge, KanbanSquare, MousePointerClick, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -11,6 +11,7 @@ export function ProjectTabs({ projectId }: { projectId: string }) {
   const tabs = [
     { href: base, label: "Canvas", icon: MousePointerClick, active: path === base },
     { href: `${base}/board`, label: "Board", icon: KanbanSquare, active: path.startsWith(`${base}/board`) },
+    { href: `${base}/impact`, label: "Impact", icon: Gauge, active: path.startsWith(`${base}/impact`) },
     { href: `${base}/settings`, label: "Settings", icon: Settings2, active: path.startsWith(`${base}/settings`) },
   ];
   return (

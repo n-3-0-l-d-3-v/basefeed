@@ -60,10 +60,32 @@ Exact duplicates in identical positions are genuinely indistinguishable, and the
 
 ## Automation
 
+One feedback round as a pipeline. Every arrow used to be a person; the two diamonds are the only
+places a person still decides.
+
+```mermaid
+flowchart LR
+  A[Client clicks an element] --> B[Context captured<br/>screenshot, classes, device]
+  B --> C[AI triage<br/>label, extract copy change]
+  C --> D{Needs a decision?<br/>vague, duplicate,<br/>priority, new work}
+  D -- no --> E[On the board, labelled]
+  D -- yes, one click --> E
+  E --> F[Site is edited]
+  F --> G[Change detected<br/>likely fixed]
+  G --> H{Team verifies}
+  H --> I[Client emailed a link]
+  I --> J{Looks good?}
+  J -- yes --> K[Confirmed]
+  J -- not yet --> E
+  E -. API / MCP .-> L[Coding agent or<br/>n8n, Zapier, Slack]
+```
+
 1. **Auto-context** on every comment: screenshot of the area (pin and outline drawn in), selector, Webflow classes, breakpoint, viewport, browser, OS.
 2. **AI triage** (Claude or Gemini, structured output, same prompt and schema) that stays quiet unless it has something to add. A clear comment is labelled and left alone. It speaks up only for: a comment too vague to act on (one click sends the clarifying question to the author), a duplicate of an older comment (one click closes it into that thread), a priority that is clearly wrong ("button does nothing" filed as low), and requests that are new work rather than a tweak (scope and timeline). When the author dictates wording ("should say Book a demo", "$24 not $19") the exact replacement is extracted, ready to paste. It runs in a retrying background job; if the provider is down or not configured, comments work exactly the same.
 3. **"Changed since this comment"**: when a team member views a page, the widget compares each commented element with its snapshot (text, image, 20 tracked styles, size) at the same breakpoint and flags likely fixes: "font-size 16px → 20px. Verify & resolve".
-4. **Hand-off to coding agents**: "Copy for AI agent" exports markdown with selector, classes, DOM path, request, task and changes.
+4. **Client sign-off**: resolving a client's comment emails them a link that opens the page on that comment, signed in, with Looks good / Not yet. "Not yet" reopens it with their note and tells the team.
+5. **Impact**: each project counts what the tool handled (context captured, comments sorted and flagged, fixes noticed, client confirmations, time to resolve). Counted from the data, never estimated.
+6. **Hand-off to coding agents**: "Copy for AI agent" exports markdown with selector, classes, DOM path, request, task and changes.
 
 ## API and MCP (for coding agents)
 
