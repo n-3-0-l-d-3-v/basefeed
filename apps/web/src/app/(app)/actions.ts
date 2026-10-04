@@ -10,6 +10,7 @@ import { ASSIGN_CATEGORIES } from "@/lib/assign-categories";
 import { COMMENT_COLUMNS, getSession, type DashboardComment } from "@/lib/data";
 import { env } from "@/lib/env";
 import { drainJobs, enqueueTriage } from "@/lib/jobs";
+import { statusLink } from "@/lib/notify";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { normalizePageUrl, originOf } from "@/lib/urls";
 import { deliverWebhook, WEBHOOK_EVENTS, webhookUrlProblem } from "@/lib/webhooks";
@@ -357,6 +358,16 @@ export async function replyToComment(commentId: string, body: string): Promise<R
   if (error) return fail("Couldn't send the reply.");
   after(() => drainJobs());
   return ok(data);
+}
+
+/** The read-only status page of the client who wrote this comment, for the team to paste into an email or chat. */
+export async function clientStatusLink(commentId: string): Promise<Result<{ url: string }>> {
+  const { supabase } = await getSession();
+  if (!Id.safeParse(commentId).success) return fail("Comment not found.");
+  const { data } = await supabase.from("comments").select("project_id, author_guest_id").eq("id", commentId).maybeSingle();
+  if (!data?.author_guest_id) return fail("This comment was not left by a client.");
+  const url = await statusLink(data.project_id, data.author_guest_id);
+  return url ? ok({ url }) : fail("Client access is off for this project. Create a share link in Settings first.");
 }
 
 export async function getComment(commentId: string): Promise<DashboardComment | null> {

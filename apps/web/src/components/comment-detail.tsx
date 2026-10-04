@@ -1,10 +1,11 @@
 "use client";
 
 import { Ago } from "./ago";
-import { Check, Copy, ExternalLink, FileText, Paperclip, RotateCw, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Copy, ExternalLink, FileText, Link2, Paperclip, RotateCw, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   addAttachment,
+  clientStatusLink,
   decideTriage,
   deleteAttachment,
   deleteComment,
@@ -63,6 +64,7 @@ export function CommentDetail({
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [statusCopied, setStatusCopied] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [pending, start] = useTransition();
   const replyRef = useRef<HTMLTextAreaElement>(null);
@@ -442,6 +444,22 @@ export function CommentDetail({
           {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
           {copied ? "Copied" : "Copy for AI agent"}
         </Button>
+        {c.author_guest_id && (
+          <Button
+            size="sm"
+            onClick={async () => {
+              const r = await clientStatusLink(c.id);
+              if (!r.ok) return setError(r.error);
+              await navigator.clipboard.writeText(r.data.url);
+              setStatusCopied(true);
+              setTimeout(() => setStatusCopied(false), 1500);
+            }}
+            title={`A read-only page for ${client}: every comment they left and where it stands`}
+          >
+            {statusCopied ? <Check aria-hidden /> : <Link2 aria-hidden />}
+            {statusCopied ? "Link copied" : "Copy client status link"}
+          </Button>
+        )}
         <a className={cx("inline-flex h-8 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium text-ink-2 hover:bg-sunken hover:text-ink [&_svg]:size-4")} href={`${pageUrl}${pageUrl.includes("?") ? "&" : "?"}bn_feedback=1`} target="_blank" rel="noreferrer">
           <ExternalLink aria-hidden />
           Open on site
