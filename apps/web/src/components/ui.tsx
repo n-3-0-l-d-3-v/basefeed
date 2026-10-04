@@ -62,7 +62,8 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cx(field, "h-9 pr-8 text-[13px]", className)} {...props} />;
+  // A width passed by the caller replaces the default full width (two width classes would otherwise fight).
+  return <select className={cx(/(^|\s)w-/.test(className ?? "") ? field.replace("w-full ", "") : field, "h-9 pr-8 text-[13px]", className)} {...props} />;
 }
 
 export function Field({ label, hint, error, htmlFor, children }: { label: string; hint?: ReactNode; error?: string | null; htmlFor?: string; children: ReactNode }) {
