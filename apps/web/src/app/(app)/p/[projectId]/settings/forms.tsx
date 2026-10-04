@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
 import { WEBHOOK_EVENTS } from "@/lib/webhook-events";
 import { ASSIGN_CATEGORIES } from "@/lib/assign-categories";
-import { createShareLink, createWebhook, deleteWebhook, revokeShareLink, setAssignRule, setOrigins, testWebhook, updateProject } from "../../../actions";
+import { createShareLink, createWebhook, deleteWebhook, revokeShareLink, setAssignRule, setOrigins, setReminderDays, testWebhook, updateProject } from "../../../actions";
 
 function Status({ error, saved }: { error: string | null; saved: boolean }) {
   if (error)
@@ -208,6 +208,52 @@ export function ProjectForm({ projectId, name, figmaUrl }: { projectId: string; 
         <Status error={error} saved={saved} />
       </div>
     </form>
+  );
+}
+
+const REMINDER_CHOICES = [1, 2, 3, 5, 7, 14];
+
+export function ReminderSetting({ projectId, days }: { projectId: string; days: number | null }) {
+  const [value, setValue] = useState(days);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [pending, start] = useTransition();
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-4 text-[13px]">
+      <label htmlFor="reminder-days" className="min-w-0 flex-1">
+        <span className="block font-medium">Remind a client who has not confirmed a fix</span>
+        <span className="block text-[12px] text-muted">One email for everything of theirs that is waiting. Sent once, and noted in each comment&apos;s history.</span>
+      </label>
+      <Select
+        id="reminder-days"
+        className="w-40"
+        disabled={pending}
+        value={value ?? ""}
+        onChange={(e) => {
+          const next = e.target.value ? Number(e.target.value) : null;
+          const before = value;
+          setValue(next);
+          setSaved(false);
+          start(async () => {
+            const r = await setReminderDays(projectId, next);
+            if (!r.ok) {
+              setValue(before);
+              return setError(r.error);
+            }
+            setError(null);
+            setSaved(true);
+          });
+        }}
+      >
+        <option value="">Never</option>
+        {[...new Set([...REMINDER_CHOICES, ...(days ? [days] : [])])].sort((a, b) => a - b).map((d) => (
+          <option key={d} value={d}>
+            After {d} {d === 1 ? "day" : "days"}
+          </option>
+        ))}
+      </Select>
+      <Status error={error} saved={saved} />
+    </div>
   );
 }
 

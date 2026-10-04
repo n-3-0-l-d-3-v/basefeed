@@ -54,6 +54,18 @@ export async function createProject(_: unknown, form: FormData): Promise<Result 
   redirect(`/p/${project.id}/settings?welcome=1`);
 }
 
+/** After how many days a client who has not confirmed a fix is reminded; null switches reminders off. */
+export async function setReminderDays(projectId: string, days: number | null): Promise<Result> {
+  const ctx = await projectFor(projectId);
+  if (!ctx) return fail("Project not found.");
+  const parsed = z.union([z.null(), z.number().int().min(1).max(30)]).safeParse(days);
+  if (!parsed.success) return fail("Choose between 1 and 30 days.");
+  const { error } = await ctx.supabase.from("projects").update({ reminder_days: parsed.data }).eq("id", projectId);
+  if (error) return fail("Couldn't save.");
+  revalidatePath(`/p/${projectId}/settings`);
+  return ok(undefined);
+}
+
 export async function updateProject(projectId: string, patch: { name?: string; figmaUrl?: string | null }): Promise<Result> {
   const ctx = await projectFor(projectId);
   if (!ctx) return fail("Project not found.");

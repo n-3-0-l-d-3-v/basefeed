@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InstallSnippet } from "@/components/install-snippet";
 import { getMembers, getProject, getSession } from "@/lib/data";
 import { env } from "@/lib/env";
-import { AssignRules, OriginsForm, ProjectForm, ShareLinks, Webhooks } from "./forms";
+import { AssignRules, OriginsForm, ProjectForm, ReminderSetting, ShareLinks, Webhooks } from "./forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -40,6 +40,9 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     getMembers(project.workspace_id),
   ]);
 
+  // Asked for separately so the page still loads on a database without this column.
+  const { data: reminder, error: noReminder } = await supabase.from("projects").select("reminder_days").eq("id", projectId).maybeSingle();
+
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-3 pb-16 pt-1">
       {welcome && (
@@ -72,6 +75,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         description="Share a link so clients can comment with just their name and email: no account, no password. Turn a link off at any time."
       >
         <ShareLinks projectId={project.id} links={links ?? []} />
+        {!noReminder && reminder && <ReminderSetting projectId={project.id} days={reminder.reminder_days} />}
       </Section>
       {!noRules && (
         <Section

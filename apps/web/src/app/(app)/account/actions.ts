@@ -23,11 +23,25 @@ export async function updateProfile(name: string): Promise<Result> {
 
 const Pref = z.enum(["new_comments", "daily_digest", "assignments", "replies"]);
 
-export async function setNotificationPref(key: z.infer<typeof Pref>, value: boolean): Promise<Result> {
+function validTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== "string" || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `timeZone` is the browser's zone; it is stored when the digest is switched on, so the digest arrives at 09:00 there. */
+export async function setNotificationPref(key: z.infer<typeof Pref>, value: boolean, timeZone?: string): Promise<Result> {
   const { supabase, user } = await getSession();
   if (!Pref.safeParse(key).success) return fail("Unknown setting.");
   const row = { user_id: user.id, updated_at: new Date().toISOString(), ...({ [key]: value } as Partial<Record<z.infer<typeof Pref>, boolean>>) };
-  const { error } = await supabase.from("notification_prefs").upsert(row, { onConflict: "user_id" });
+  const withZone = key === "daily_digest" && value && validTimeZone(timeZone) ? { ...row, timezone: timeZone } : null;
+  let { error } = await supabase.from("notification_prefs").upsert(withZone ?? row, { onConflict: "user_id" });
+  // A database that does not have the time zone column yet still saves the switch itself.
+  if (error && withZone) ({ error } = await supabase.from("notification_prefs").upsert(row, { onConflict: "user_id" }));
   if (error) return fail("Couldn't save that setting.");
   return ok(undefined);
 }

@@ -50,7 +50,7 @@ export default async function AccountPage() {
         <ProfileForm name={profile.name} email={profile.email} />
       </Section>
       <Section title="Email notifications" description="Sent when something needs you. Clients who comment by share link are always emailed replies to their comments.">
-        <NotificationToggles initial={{ new_comments: prefs?.new_comments ?? true, daily_digest: prefs?.daily_digest ?? false, assignments: prefs?.assignments ?? true, replies: prefs?.replies ?? true }} />
+        <NotificationToggles timeZone={prefs?.timezone ?? null} initial={{ new_comments: prefs?.new_comments ?? true, daily_digest: prefs?.daily_digest ?? false, assignments: prefs?.assignments ?? true, replies: prefs?.replies ?? true }} />
       </Section>
       <Section title="Team" description="Everyone in a workspace sees all of its projects. Invite links work until they expire or you turn them off.">
         <Team userId={user.id} teams={teams} invites={invites ?? []} />

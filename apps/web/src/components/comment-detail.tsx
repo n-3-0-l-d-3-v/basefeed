@@ -43,7 +43,7 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   "triage.dismissed": () => "dismissed the AI flag",
   "client.approved": () => "confirmed the fix",
   "client.rejected": () => "said it isn't right yet",
-  "client.reminded": () => "emailed the client, who had not answered for three days",
+  "client.reminded": (m) => `emailed the client, who had not answered${typeof m.days === "number" ? ` for ${m.days === 1 ? "a day" : `${m.days} days`}` : ""}`,
 };
 
 export function CommentDetail({
