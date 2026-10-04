@@ -1,5 +1,6 @@
 "use client";
 
+import { Ago } from "@/components/ago";
 import {
   DndContext,
   KeyboardSensor,
@@ -18,7 +19,7 @@ import { Pin } from "@/components/pin";
 import { Badge, Button, cx, PRIORITY_TONE, Select, STATUS_LABEL } from "@/components/ui";
 import { needsAttention, useLiveComments } from "@/components/use-live-comments";
 import type { DashboardComment, Member } from "@/lib/data";
-import { ago, commentsToMarkdown } from "@/lib/export";
+import { commentsToMarkdown } from "@/lib/export";
 import { pathOf } from "@/lib/urls";
 import { updateComment } from "../../../actions";
 
@@ -241,7 +242,7 @@ function Card({
             {c.client_review === "rejected" && c.status !== "resolved" && <Badge tone="pink">Sent back</Badge>}
         {needsAttention(c) && <Badge tone="pink">Needs a look</Badge>}
         <span className="ml-auto truncate">
-          {assignee ?? c.author_name} · {ago(c.created_at)}
+          {assignee ?? c.author_name} · <Ago iso={c.created_at} />
         </span>
       </div>
       <label className="sr-only" htmlFor={`mv-${c.id}`}>

@@ -1,10 +1,10 @@
 "use client";
 
+import { Ago } from "@/components/ago";
 import { Check, Copy, KeyRound, Link2, UserMinus } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Badge, Button, cx, Field, IconButton, Input, Select } from "@/components/ui";
 import type { Member } from "@/lib/data";
-import { ago } from "@/lib/export";
 import { createApiToken, createInvite, removeMember, revokeApiToken, revokeInvite, setNotificationPref, updateProfile } from "./actions";
 
 function useCopy() {
@@ -300,7 +300,7 @@ export function ApiTokens({ tokens, appUrl }: { tokens: Token[]; appUrl: string 
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{t.name}</span>
                 <span className="block font-mono text-[11px] text-muted">
-                  {t.prefix}… · {t.last_used_at ? `used ${ago(t.last_used_at)}` : "never used"}
+                  {t.prefix}… · {t.last_used_at ? <>used <Ago iso={t.last_used_at} /></> : "never used"}
                 </span>
               </span>
               {t.revoked_at ? (

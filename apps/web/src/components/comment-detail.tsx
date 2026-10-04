@@ -1,5 +1,6 @@
 "use client";
 
+import { Ago } from "./ago";
 import { Check, Copy, ExternalLink, FileText, Paperclip, RotateCw, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -15,7 +16,7 @@ import {
   type TriageDecision,
 } from "@/app/(app)/actions";
 import type { DashboardComment, Member } from "@/lib/data";
-import { ago, commentToMarkdown } from "@/lib/export";
+import { commentToMarkdown } from "@/lib/export";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { triageInsights, type Insight } from "@/lib/triage/insights";
 import { EmojiInsert } from "./emoji-insert";
@@ -181,7 +182,7 @@ export function CommentDetail({
           <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-muted">
             <span className="font-medium text-ink-2">{c.author_name}</span>
             {c.author_guest_id && <Badge tone="info">Client</Badge>}
-            <span>· {ago(c.created_at)}</span>
+            <span>· <Ago iso={c.created_at} /></span>
             {c.category && <Badge>{c.category}</Badge>}
             {c.context.qa && <Badge tone="ink">Page check</Badge>}
           </p>
@@ -353,7 +354,7 @@ export function CommentDetail({
             thread.replies.map((r) => (
               <div key={r.id} className="text-[14px]">
                 <p className="text-[12px]">
-                  <span className="font-medium">{r.author_name}</span> <span className="text-muted">· {ago(r.created_at)}</span>
+                  <span className="font-medium">{r.author_name}</span> <span className="text-muted">· <Ago iso={r.created_at} /></span>
                 </p>
                 <p className="mt-0.5 whitespace-pre-wrap leading-relaxed">
                   <Linkified text={r.body} />
@@ -414,7 +415,7 @@ export function CommentDetail({
               {thread.activity.map((a) => (
                 <li key={a.id}>
                   <span className="font-medium">{a.actor_name}</span> {ACTIVITY[a.action]?.((a.meta ?? {}) as Record<string, unknown>) ?? a.action}{" "}
-                  <span className="text-muted">· {ago(a.created_at)}</span>
+                  <span className="text-muted">· <Ago iso={a.created_at} /></span>
                 </li>
               ))}
             </ol>

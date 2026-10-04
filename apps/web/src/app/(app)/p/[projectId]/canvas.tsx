@@ -1,5 +1,6 @@
 "use client";
 
+import { Ago } from "@/components/ago";
 import type { HostToWidget, WidgetToHost } from "@bn/shared";
 import { Check, ExternalLink, FileText, Frame, ImageIcon, Laptop, Link2, Maximize2, MessageSquarePlus, Minus, Monitor, MousePointer2, Plus, RotateCw, Smartphone, Tablet } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -11,7 +12,6 @@ import { Pin } from "@/components/pin";
 import { Badge, Button, cx, EmptyState, Field, IconButton, Input, Kbd, PRIORITY_TONE, Segmented } from "@/components/ui";
 import { needsAttention, useLiveComments } from "@/components/use-live-comments";
 import type { DashboardComment, Member } from "@/lib/data";
-import { ago } from "@/lib/export";
 import { embedUrl, normalizePageUrl, originOf, pathOf } from "@/lib/urls";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { addImagePage, addPage, getComment, mintEmbedToken, removePage } from "../../actions";
@@ -515,7 +515,7 @@ function CommentRow({ c, onSelect }: { c: DashboardComment; onSelect: () => void
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
             <span className="text-ink-2">{c.author_name}</span>
             {c.author_guest_id && <Badge tone="info">Client</Badge>}
-            <span>· {ago(c.created_at)}</span>
+            <span>· <Ago iso={c.created_at} /></span>
             {c.priority !== "medium" && <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>}
             {c.triage_state === "ready" && <Badge tone="ink">Needs your call</Badge>}
             {c.context.qa && <Badge title="Found by the automated page check">Page check</Badge>}
