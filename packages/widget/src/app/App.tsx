@@ -1,5 +1,6 @@
 import { capture, DocIndex, pinPoint, takeSnapshot, type Anchor, type Snapshot } from "@bn/anchor";
-import { QA_RULES, type CommentContext, type Priority, type Status, type WidgetAttachment, type WidgetComment, type WidgetMe } from "@bn/shared";
+import type { CommentContext, Priority, Status, WidgetAttachment, WidgetComment, WidgetMe } from "@bn/shared";
+import { QA_RULES } from "@bn/shared/qa-rules";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MountOptions } from "../loader";
 import { Api, ApiError } from "./api";
