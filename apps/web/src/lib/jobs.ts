@@ -46,13 +46,23 @@ export async function enqueueTriage(commentId: string): Promise<(() => Promise<v
   };
 }
 
-export async function runJobs(kind: JobKind, limit = 5): Promise<{ done: number; failed: number }> {
+/**
+ * How long one run keeps starting new jobs. The runner is a serverless function with a 60 s limit
+ * and a single AI call can take 25 s, so it stops starting jobs at 30 s and leaves the rest queued.
+ */
+const RUN_BUDGET_MS = 30_000;
+
+export async function runJobs(kind: JobKind, limit = 5, deadline = Date.now() + RUN_BUDGET_MS): Promise<{ done: number; failed: number }> {
   const admin = supabaseAdmin();
-  const { data: jobs, error } = await admin.rpc("claim_jobs", { p_kind: kind, p_limit: limit });
-  if (error) throw error;
   let done = 0;
   let failed = 0;
-  for (const job of jobs ?? []) {
+  // Claim one job at a time: a job is only locked while it is actually being worked on, so if this
+  // run is cut short (a slow provider, the function's time limit) nothing else is left stuck.
+  for (let i = 0; i < limit && Date.now() < deadline; i++) {
+    const { data: jobs, error } = await admin.rpc("claim_jobs", { p_kind: kind, p_limit: 1 });
+    if (error) throw error;
+    const job = jobs?.[0];
+    if (!job) break;
     const payload = (job.payload ?? {}) as Record<string, unknown>;
     try {
       await handlers[kind].run(payload);

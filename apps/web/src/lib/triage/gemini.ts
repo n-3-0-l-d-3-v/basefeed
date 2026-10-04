@@ -12,6 +12,10 @@ const SCHEMA = { ...z.toJSONSchema(Output), $schema: undefined };
  */
 const FALLBACKS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
+const CALL_TIMEOUT_MS = 25_000;
+// 0 is a request that never got an HTTP answer (our own timeout, a dropped connection).
+const NEXT_MODEL = [0, 404, 429, 500, 503, 504];
+
 // The model stopped because of content policy: asking again gets the same answer.
 const BLOCKED = new Set<FinishReason | undefined>([
   FinishReason.SAFETY,
@@ -29,8 +33,9 @@ export class GeminiTriage implements TriageProvider {
     apiKey: string,
     private readonly model = "gemini-3.8-flash",
   ) {
-    // One quick retry smooths over brief "high demand" 503s; longer outages go back to the job queue.
-    this.client = new GoogleGenAI({ apiKey, httpOptions: { timeout: 60_000, retryOptions: { attempts: 2 } } });
+    // No retries inside the SDK: a failed model falls through to the next one below, and anything
+    // longer goes back to the job queue. The runner has 60 s in total, so one call gets 25 s.
+    this.client = new GoogleGenAI({ apiKey, httpOptions: { timeout: CALL_TIMEOUT_MS, retryOptions: { attempts: 1 } } });
   }
 
   async triage(input: TriageInput): Promise<TriageResult> {
@@ -39,6 +44,7 @@ export class GeminiTriage implements TriageProvider {
     parts.push({ text: describe(input) });
 
     let response: GenerateContentResponse | undefined;
+    const started = Date.now();
     const models = [...new Set([this.model, ...FALLBACKS])];
     for (const model of models) {
       try {
@@ -53,8 +59,9 @@ export class GeminiTriage implements TriageProvider {
         const last = model === models.at(-1);
         // Invalid request or key, no access: retrying fails the same way. So does a model that no longer exists, once the chain is exhausted.
         if ([400, 401, 403].includes(status) || (status === 404 && last)) throw new PermanentTriageError(`${status}: ${(e as Error).message}`);
-        // Overloaded, out of quota or retired (all per model): try the next one, then let the job queue retry with backoff.
-        if (last || ![404, 429, 503].includes(status)) throw e;
+        // Overloaded, out of quota, retired or timed out (all per model): try the next one while there is
+        // time for another call, then let the job queue retry with backoff.
+        if (last || !NEXT_MODEL.includes(status) || Date.now() - started > CALL_TIMEOUT_MS) throw e;
       }
     }
     if (!response) throw new Error("unreachable");
