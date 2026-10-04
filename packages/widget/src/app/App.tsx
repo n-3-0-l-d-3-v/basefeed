@@ -1,11 +1,11 @@
 import { capture, DocIndex, pinPoint, takeSnapshot, type Anchor, type Snapshot } from "@bn/anchor";
-import type { CommentContext, Priority, Status, WidgetComment, WidgetMe } from "@bn/shared";
+import type { CommentContext, Priority, Status, WidgetAttachment, WidgetComment, WidgetMe } from "@bn/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MountOptions } from "../loader";
 import { Api, ApiError } from "./api";
 import { describe, pageContext } from "./env";
 import { isTypingTarget, placeCard, usePicker, useViewportTick } from "./hooks";
-import { IconCheck, IconClose, IconComment, IconExit, IconList } from "./icons";
+import { IconCheck, IconClip, IconClose, IconComment, IconExit, IconList } from "./icons";
 import { captureScreenshot } from "./screenshot";
 import { Session } from "./session";
 import { ago } from "./time";
@@ -203,14 +203,29 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
     return () => document.removeEventListener("keydown", onKey);
   }, [phase.k, repin, draft, openId, panel]);
 
-  const submit = async (body: string, priority: Priority) => {
+  const submit = async (body: string, priority: Priority, files: File[]) => {
     if (!draft) return;
     const screenshot = await draft.shot;
     const { comment } = await api.create({ body, priority, anchor: draft.anchor, snapshot: draft.snapshot, context: draft.context, screenshot });
-    setComments((list) => [...list, comment]);
+    // The comment is saved first, so a file that fails to upload never costs the client their words.
+    const attachments: WidgetAttachment[] = [];
+    let failed = 0;
+    for (const f of files) {
+      try {
+        attachments.push((await api.attach(comment.id, f)).attachment);
+      } catch {
+        failed++;
+      }
+    }
+    setComments((list) => [...list, { ...comment, attachments }]);
     setDraft(null);
     session.toHost({ type: "bn:created", commentId: comment.id });
-    flash(`Comment #${comment.number} added`);
+    flash(failed ? `Comment #${comment.number} added, but ${failed} file${failed === 1 ? "" : "s"} couldn't be attached` : `Comment #${comment.number} added`);
+  };
+
+  const attach = async (id: string, file: File) => {
+    const { attachment } = await api.attach(id, file);
+    setComments((list) => list.map((c) => (c.id === id ? { ...c, attachments: [...c.attachments, attachment] } : c)));
   };
 
   const setStatus = async (id: string, status: Status) => {
@@ -277,6 +292,7 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
           onClose={() => setOpenId(null)}
           onStatus={setStatus}
           onReply={reply}
+          onAttach={(file) => attach(open.comment.id, file)}
           onReview={(approved, note) => review(open.comment, approved, note)}
           onConfirm={(el, point) => moveTo(open.comment, el, point)}
           onRepick={() => {
@@ -375,8 +391,62 @@ function Pin({ placed, active, onClick }: { placed: Placed; active: boolean; onC
 
 const PRIORITIES: Priority[] = ["low", "medium", "high", "urgent"];
 
-function Composer({ draft, onCancel, onSubmit }: { draft: Draft; onCancel: () => void; onSubmit: (body: string, p: Priority) => Promise<void> }) {
+const FILE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
+const FILE_MAX = 4 * 1024 * 1024;
+
+/** Why a file can't be attached, in words a client understands; null when it is fine. */
+function fileProblem(f: File): string | null {
+  if (!FILE_TYPES.includes(f.type)) return "Attach an image (PNG, JPG, WebP, GIF) or a PDF.";
+  if (f.size > FILE_MAX) return `${f.name} is over 4 MB.`;
+  return null;
+}
+
+/** A paperclip that opens the file chooser. Files also arrive by pasting a screenshot into the text box. */
+function AttachButton({ disabled, onFiles }: { disabled?: boolean; onFiles: (files: File[]) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button class="btn icon" type="button" disabled={disabled} aria-label="Attach a file" title="Attach an image or PDF (or paste a screenshot)" onClick={() => input.current?.click()}>
+        <IconClip />
+      </button>
+      <input
+        ref={input}
+        type="file"
+        multiple
+        hidden
+        accept={FILE_TYPES.join(",")}
+        aria-label="Files to attach"
+        onChange={(e) => {
+          const el = e.target as HTMLInputElement;
+          onFiles(Array.from(el.files ?? []));
+          el.value = "";
+        }}
+      />
+    </>
+  );
+}
+
+function Files({ files }: { files: WidgetAttachment[] }) {
+  if (files.length === 0) return null;
+  return (
+    <div class="files">
+      {files.map((f) => (
+        <a key={f.id} href={f.url ?? undefined} target="_blank" rel="noreferrer" title={f.name}>
+          {f.mime.startsWith("image/") && f.url ? <img src={f.url} alt={f.name} /> : <span class="name">{f.name}</span>}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function Composer({ draft, onCancel, onSubmit }: { draft: Draft; onCancel: () => void; onSubmit: (body: string, p: Priority, files: File[]) => Promise<void> }) {
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const add = (incoming: File[]) => {
+    const problem = incoming.map(fileProblem).find(Boolean);
+    setError(problem ?? null);
+    setFiles((list) => [...list, ...incoming.filter((f) => !fileProblem(f))].slice(0, 5));
+  };
   const [priority, setPriority] = useState<Priority>("medium");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -389,7 +459,7 @@ function Composer({ draft, onCancel, onSubmit }: { draft: Draft; onCancel: () =>
     setBusy(true);
     setError(null);
     try {
-      await onSubmit(body.trim(), priority);
+      await onSubmit(body.trim(), priority, files);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the comment.");
       setBusy(false);
@@ -426,7 +496,25 @@ function Composer({ draft, onCancel, onSubmit }: { draft: Draft; onCancel: () =>
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
               if (e.key === "Escape") onCancel();
             }}
+            onPaste={(e) => {
+              const pasted = Array.from(e.clipboardData?.files ?? []);
+              if (!pasted.length) return;
+              e.preventDefault();
+              add(pasted);
+            }}
           />
+          {files.length > 0 && (
+            <div class="files">
+              {files.map((f, i) => (
+                <span key={`${f.name}${i}`}>
+                  <span class="name">{f.name}</span>
+                  <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles((list) => list.filter((_, j) => j !== i))}>
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <div class="chips" role="radiogroup" aria-label="Priority">
             {PRIORITIES.map((p) => (
               <button key={p} class={`chip p-${p}`} role="radio" aria-pressed={priority === p} aria-checked={priority === p} onClick={() => setPriority(p)}>
@@ -437,6 +525,7 @@ function Composer({ draft, onCancel, onSubmit }: { draft: Draft; onCancel: () =>
           {error && <div class="err">{error}</div>}
         </div>
         <footer>
+          <AttachButton disabled={busy} onFiles={add} />
           <span class="hint">Screenshot, element and device are attached for you</span>
           <span class="spacer" />
           <button class="btn primary" disabled={!body.trim() || busy} onClick={() => void send()}>
@@ -456,6 +545,7 @@ function Thread({
   onClose,
   onStatus,
   onReply,
+  onAttach,
   onReview,
   onConfirm,
   onRepick,
@@ -465,6 +555,7 @@ function Thread({
   onClose: () => void;
   onStatus: (id: string, s: Status) => Promise<void>;
   onReply: (id: string, body: string) => Promise<void>;
+  onAttach: (file: File) => Promise<void>;
   onReview: (approved: boolean, note?: string) => Promise<void>;
   onConfirm: (el: Element, point: { x: number; y: number }) => Promise<void>;
   onRepick: () => void;
@@ -475,6 +566,13 @@ function Thread({
   const [error, setError] = useState<string | null>(null);
   const point = element && comment.anchor ? pinPoint(element, comment.anchor.offset) : { x: window.innerWidth - 380, y: 80 };
   const changes = comment.change_summary?.changes ?? [];
+  const attachAll = (incoming: File[]) => {
+    const problem = incoming.map(fileProblem).find(Boolean);
+    if (problem) return setError(problem);
+    void act(async () => {
+      for (const f of incoming) await onAttach(f);
+    });
+  };
   const toReview = comment.mine && comment.client_review === "pending" && !me.canModerate;
 
   const act = async (fn: () => Promise<void>) => {
@@ -569,6 +667,7 @@ function Thread({
         <div class="msg">
           <span class="who">{comment.author_name}</span>
           <span class="text">{comment.body}</span>
+          <Files files={comment.attachments} />
           <span class="meta">{ago(comment.created_at)}</span>
         </div>
         {comment.replies.map((r) => (
@@ -587,6 +686,12 @@ function Thread({
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text.trim()) void act(async () => (await onReply(comment.id, text.trim()), setText("")));
           }}
+          onPaste={(e) => {
+            const pasted = Array.from(e.clipboardData?.files ?? []);
+            if (!pasted.length) return;
+            e.preventDefault();
+            attachAll(pasted);
+          }}
         />
         {error && <div class="err">{error}</div>}
       </div>
@@ -603,6 +708,7 @@ function Thread({
             </button>
           ))}
         <span class="spacer" />
+        <AttachButton disabled={busy} onFiles={attachAll} />
         <button class="btn dark" disabled={busy || !text.trim()} onClick={() => void act(async () => (await onReply(comment.id, text.trim()), setText("")))}>
           Reply
         </button>

@@ -1,6 +1,6 @@
 import { CreateCommentSchema, type Json } from "@bn/shared";
 import { after, NextResponse } from "next/server";
-import { repliesByComment, storeScreenshot, toWidgetComment, WIDGET_COMMENT_COLUMNS } from "@/lib/comments";
+import { attachmentsByComment, repliesByComment, storeScreenshot, toWidgetComment, WIDGET_COMMENT_COLUMNS } from "@/lib/comments";
 import { drainJobs, enqueueTriage } from "@/lib/jobs";
 import { normalizePageUrl, originOf } from "@/lib/urls";
 import { HttpError, preflight, readJson, widgetRoute } from "@/lib/widget/route";
@@ -20,8 +20,9 @@ export const GET = widgetRoute(async ({ req, claims, project, admin }) => {
     .eq("page_id", page.id)
     .order("number");
   if (error) throw error;
-  const replies = await repliesByComment(admin, rows.map((r) => r.id));
-  return NextResponse.json({ comments: rows.map((r) => toWidgetComment(r, replies.get(r.id) ?? [], claims.sub)) });
+  const ids = rows.map((r) => r.id);
+  const [replies, files] = await Promise.all([repliesByComment(admin, ids), attachmentsByComment(admin, ids)]);
+  return NextResponse.json({ comments: rows.map((r) => toWidgetComment(r, replies.get(r.id) ?? [], claims.sub, files.get(r.id))) });
 });
 
 export const POST = widgetRoute(async ({ req, claims, project, admin }) => {

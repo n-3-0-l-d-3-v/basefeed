@@ -89,6 +89,13 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(150,255,12
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
 .pin.review { background: var(--lime); color: var(--ink); }
+.files { display: flex; flex-wrap: wrap; gap: 6px; }
+.files a, .files span { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; border: 1px solid var(--line-2); border-radius: 8px; padding: 3px 8px; font-size: 12px; color: var(--ink-2); text-decoration: none; background: var(--paper); }
+.files a:hover { border-color: var(--ink); }
+.files img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; margin: 1px -4px 1px -4px; }
+.files button { border: 0; background: none; color: var(--muted); padding: 0 0 0 2px; font-size: 14px; line-height: 1; }
+.files .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.btn.icon { padding: 0; width: 34px; justify-content: center; }
 .spacer { flex: 1; }
 .hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .meta { color: var(--muted); font-size: 12px; }

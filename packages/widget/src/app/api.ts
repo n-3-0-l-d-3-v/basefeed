@@ -1,5 +1,5 @@
 import type { Anchor } from "@bn/anchor";
-import type { AnchorReport, CreateCommentInput, Status, WidgetComment, WidgetMe, WidgetReply } from "@bn/shared";
+import type { AnchorReport, CreateCommentInput, Status, WidgetAttachment, WidgetComment, WidgetMe, WidgetReply } from "@bn/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -17,7 +17,7 @@ export class Api {
     private readonly onUnauthorized: () => void,
   ) {}
 
-  private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async req<T>(method: string, path: string, body?: unknown, file?: File): Promise<T> {
     const t = this.token();
     if (!t) throw new ApiError(401, "Not signed in");
     let res: Response;
@@ -26,8 +26,8 @@ export class Api {
         method,
         mode: "cors",
         credentials: "omit",
-        headers: { authorization: `Bearer ${t}`, ...(body ? { "content-type": "application/json" } : {}) },
-        body: body ? JSON.stringify(body) : undefined,
+        headers: { authorization: `Bearer ${t}`, ...(file ? { "content-type": file.type } : body ? { "content-type": "application/json" } : {}) },
+        body: file ?? (body ? JSON.stringify(body) : undefined),
       });
     } catch {
       throw new ApiError(0, "Can't reach the feedback server. Check your connection.");
@@ -61,6 +61,10 @@ export class Api {
 
   setStatus(id: string, status: Status) {
     return this.req<void>("PATCH", `/comments/${id}`, { status });
+  }
+
+  attach(id: string, file: File) {
+    return this.req<{ attachment: WidgetAttachment }>("POST", `/comments/${id}/attachments?name=${encodeURIComponent(file.name)}`, undefined, file);
   }
 
   review(id: string, approved: boolean, note?: string) {

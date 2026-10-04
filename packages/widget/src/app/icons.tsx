@@ -14,6 +14,12 @@ export const IconComment = () => (
   </svg>
 );
 
+export const IconClip = () => (
+  <svg {...base}>
+    <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 0 1 5.6 5.7l-8.5 8.5a2 2 0 0 1-2.9-2.8l7.9-7.9" />
+  </svg>
+);
+
 export const IconList = () => (
   <svg {...base}>
     <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />

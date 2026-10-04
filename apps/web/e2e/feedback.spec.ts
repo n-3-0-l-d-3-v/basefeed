@@ -261,8 +261,11 @@ test.describe("clients via share link", () => {
     await guest.getByRole("button", { name: "Comment", exact: true }).click();
     await guest.locator(".section_cta h2").click();
     await guest.getByPlaceholder("What should change?").fill(text);
+    // A client can show what they mean: a file attached from the site itself, no account needed.
+    const shot = { name: `${unique("what-i-mean")}.png`, mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") };
+    await guest.getByLabel("Files to attach").setInputFiles(shot);
     await guest.getByRole("button", { name: "Send" }).click();
-    await expect(guest.getByRole("status")).toContainText(/Comment #\d+ added/);
+    await expect(guest.getByRole("status")).toHaveText(/Comment #\d+ added$/);
     await client.close();
 
     await expect(page.getByText(text)).toBeVisible();
@@ -273,6 +276,7 @@ test.describe("clients via share link", () => {
     // ...and when the team replies from the dashboard, the client is emailed the answer.
     const answer = unique("Yes, changing it to Book a call");
     await page.getByText(text).click();
+    await expect(page.getByRole("article", { name: /Comment \d+/ }).getByRole("img", { name: shot.name })).toHaveJSProperty("naturalWidth", 1);
     await page.getByLabel("Reply").fill(answer);
     await page.getByRole("button", { name: "Reply", exact: true }).click();
     await expect.poll(async () => (await inbox("casey@client.test")).some((m) => m.Snippet.includes(answer)), { timeout: 20_000 }).toBe(true);

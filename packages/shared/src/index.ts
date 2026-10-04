@@ -131,6 +131,14 @@ export interface WidgetMe {
   project: { name: string };
 }
 
+/** A file on a comment, with a short-lived link to it. */
+export interface WidgetAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  url: string | null;
+}
+
 export interface WidgetReply {
   id: string;
   author_name: string;
@@ -155,6 +163,7 @@ export interface WidgetComment {
   client_review: ClientReview | null;
   /** The person using this widget session wrote the comment. */
   mine: boolean;
+  attachments: WidgetAttachment[];
   replies: WidgetReply[];
 }
 

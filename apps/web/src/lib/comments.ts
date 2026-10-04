@@ -1,4 +1,4 @@
-import type { AnchorInput, Json, SnapshotInput, WidgetComment, WidgetReply } from "@bn/shared";
+import type { AnchorInput, Json, SnapshotInput, WidgetAttachment, WidgetComment, WidgetReply } from "@bn/shared";
 import { supabaseAdmin } from "./supabase/server";
 
 type Admin = ReturnType<typeof supabaseAdmin>;
@@ -25,9 +25,15 @@ type Row = {
 };
 
 /** `viewer` is the widget session's user or guest id; author ids themselves never leave the server. */
-export function toWidgetComment({ author_user_id, author_guest_id, ...row }: Row, replies: WidgetReply[], viewer: string): WidgetComment {
+export function toWidgetComment(
+  { author_user_id, author_guest_id, ...row }: Row,
+  replies: WidgetReply[],
+  viewer: string,
+  attachments: WidgetAttachment[] = [],
+): WidgetComment {
   return {
     ...row,
+    attachments,
     mine: viewer === author_user_id || viewer === author_guest_id,
     client_review: row.client_review as WidgetComment["client_review"],
     anchor: row.anchor as unknown as AnchorInput | null,
@@ -36,6 +42,29 @@ export function toWidgetComment({ author_user_id, author_guest_id, ...row }: Row
     change_summary: row.change_summary as unknown as WidgetComment["change_summary"],
     replies,
   };
+}
+
+/** Files clients and the team may attach from the site. Smaller than the dashboard's limit: it travels through the API. */
+export const WIDGET_ATTACHMENT = {
+  maxBytes: 4 * 1024 * 1024,
+  types: { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf" } as Record<string, string>,
+};
+
+const LINK_SECONDS = 6 * 3600; // a review session, not forever
+
+export async function attachmentsByComment(admin: Admin, ids: string[]): Promise<Map<string, WidgetAttachment[]>> {
+  const map = new Map<string, WidgetAttachment[]>();
+  if (ids.length === 0) return map;
+  const { data, error } = await admin.from("attachments").select("id, comment_id, path, name, mime").in("comment_id", ids).order("created_at");
+  if (error) throw error;
+  if (data.length === 0) return map;
+  const { data: signed } = await admin.storage.from("attachments").createSignedUrls(data.map((a) => a.path), LINK_SECONDS);
+  data.forEach((a, i) => {
+    const list = map.get(a.comment_id) ?? [];
+    list.push({ id: a.id, name: a.name, mime: a.mime, url: signed?.[i]?.signedUrl ?? null });
+    map.set(a.comment_id, list);
+  });
+  return map;
 }
 
 export async function repliesByComment(admin: Admin, ids: string[]): Promise<Map<string, WidgetReply[]>> {
