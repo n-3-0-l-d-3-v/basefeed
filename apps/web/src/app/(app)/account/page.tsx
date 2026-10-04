@@ -32,7 +32,7 @@ export default async function AccountPage() {
   const { supabase, user, profile, workspaces } = await getSession();
   const adminWs = workspaces.filter((w) => w.role === "owner" || w.role === "admin");
   const [{ data: prefs }, { data: tokens }, { data: invites }, teams] = await Promise.all([
-    supabase.from("notification_prefs").select("new_comments, assignments, replies").eq("user_id", user.id).maybeSingle(),
+    supabase.from("notification_prefs").select("*").eq("user_id", user.id).maybeSingle(),
     supabase.from("api_tokens").select("id, name, prefix, last_used_at, created_at, revoked_at").order("created_at", { ascending: false }),
     adminWs.length
       ? supabase.from("workspace_invites").select("id, workspace_id, role, expires_at, revoked_at, created_at").in("workspace_id", adminWs.map((w) => w.id)).order("created_at", { ascending: false })
@@ -50,7 +50,7 @@ export default async function AccountPage() {
         <ProfileForm name={profile.name} email={profile.email} />
       </Section>
       <Section title="Email notifications" description="Sent when something needs you. Clients who comment by share link are always emailed replies to their comments.">
-        <NotificationToggles initial={{ new_comments: prefs?.new_comments ?? true, assignments: prefs?.assignments ?? true, replies: prefs?.replies ?? true }} />
+        <NotificationToggles initial={{ new_comments: prefs?.new_comments ?? true, daily_digest: prefs?.daily_digest ?? false, assignments: prefs?.assignments ?? true, replies: prefs?.replies ?? true }} />
       </Section>
       <Section title="Team" description="Everyone in a workspace sees all of its projects. Invite links work until they expire or you turn them off.">
         <Team userId={user.id} teams={teams} invites={invites ?? []} />

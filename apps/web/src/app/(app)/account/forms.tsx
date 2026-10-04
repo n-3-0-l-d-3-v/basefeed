@@ -77,7 +77,7 @@ function Switch({ id, checked, onChange, label, description }: { id: string; che
   );
 }
 
-type PrefKey = "new_comments" | "assignments" | "replies";
+type PrefKey = "new_comments" | "daily_digest" | "assignments" | "replies";
 
 export function NotificationToggles({ initial }: { initial: Record<PrefKey, boolean> }) {
   const [prefs, setPrefs] = useState(initial);
@@ -93,6 +93,9 @@ export function NotificationToggles({ initial }: { initial: Record<PrefKey, bool
   return (
     <div>
       <Switch id="np-new" checked={prefs.new_comments} onChange={(v) => void set("new_comments", v)} label="New comments" description="Someone comments on a project in your workspace." />
+      {prefs.new_comments && (
+        <Switch id="np-digest" checked={prefs.daily_digest} onChange={(v) => void set("daily_digest", v)} label="Once a day instead" description="New comments arrive as one email each morning (09:00 India time) instead of one per comment. Assignments and replies still arrive straight away." />
+      )}
       <Switch id="np-assign" checked={prefs.assignments} onChange={(v) => void set("assignments", v)} label="Assigned to me" description="A comment is assigned to you." />
       <Switch id="np-replies" checked={prefs.replies} onChange={(v) => void set("replies", v)} label="Replies" description="Someone replies to your comment, or to one assigned to you." />
       <Alert error={error} />

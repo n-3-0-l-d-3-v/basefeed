@@ -21,7 +21,7 @@ export async function updateProfile(name: string): Promise<Result> {
   return ok(undefined);
 }
 
-const Pref = z.enum(["new_comments", "assignments", "replies"]);
+const Pref = z.enum(["new_comments", "daily_digest", "assignments", "replies"]);
 
 export async function setNotificationPref(key: z.infer<typeof Pref>, value: boolean): Promise<Result> {
   const { supabase, user } = await getSession();

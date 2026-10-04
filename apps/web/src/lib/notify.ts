@@ -9,7 +9,8 @@ type Payload =
   | { event: "comment.assigned"; comment_id: string; assignee_id: string }
   | { event: "reply.created"; reply_id: string }
   | { event: "review.requested"; comment_id: string }
-  | { event: "review.rejected"; comment_id: string };
+  | { event: "review.rejected"; comment_id: string }
+  | { event: "digest"; user_id: string; since: string };
 
 type Pref = "new_comments" | "assignments" | "replies";
 type Recipient = { email: string; name: string; kind: "member" | "guest" };
@@ -29,15 +30,21 @@ async function loadComment(id: string) {
   return { ...data, project, page };
 }
 
-/** Members who want this kind of email. No preferences row means everything on. */
-async function members(userIds: string[], pref: Pref): Promise<Recipient[]> {
+/**
+ * Members who want this kind of email. No preferences row means everything on. With `digest: "skip"`,
+ * members who chose the daily digest are left out: they get it in tomorrow's email instead.
+ */
+async function members(userIds: string[], pref: Pref, digest: "skip" | "ignore" = "ignore"): Promise<Recipient[]> {
   if (userIds.length === 0) return [];
   const admin = supabaseAdmin();
+  // select("*") so this keeps working on a database where the daily_digest column does not exist yet.
   const [{ data: profiles }, { data: prefs }] = await Promise.all([
     admin.from("profiles").select("id, name, email").in("id", userIds),
-    admin.from("notification_prefs").select(`user_id, ${pref}`).in("user_id", userIds),
+    admin.from("notification_prefs").select("*").in("user_id", userIds),
   ]);
-  const off = new Set((prefs ?? []).filter((p) => (p as Record<string, unknown>)[pref] === false).map((p) => p.user_id));
+  const off = new Set(
+    ((prefs ?? []) as Record<string, unknown>[]).filter((p) => p[pref] === false || (digest === "skip" && p.daily_digest === true)).map((p) => p.user_id as string),
+  );
   return (profiles ?? []).filter((p) => p.email && !off.has(p.id)).map((p) => ({ email: p.email, name: p.name || p.email, kind: "member" as const }));
 }
 
@@ -76,6 +83,69 @@ function layout(o: { eyebrow: string; heading: string; quote: string; meta: stri
   return { html, text };
 }
 
+const DIGEST_PER_PROJECT = 8;
+const SHELL_OPEN = `<!doctype html><html><body style="margin:0;background:#fffef4;font-family:Satoshi,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0a0a0a">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;box-shadow:0 0 0 1px #e9e6d8">
+<tr><td style="padding:24px 28px 0"><span style="font-weight:700;letter-spacing:-0.01em">BASENINE</span> <span style="color:#b8245f;font-family:ui-monospace,Menlo,monospace;font-size:13px">Feedback</span></td></tr>`;
+
+/** One email with every comment made since `since`, grouped by project. Sends nothing when nothing is new. */
+async function handleDigest(userId: string, since: string): Promise<void> {
+  const admin = supabaseAdmin();
+  const [recipient] = await members([userId], "new_comments");
+  if (!recipient) return;
+  const { data: ws } = await admin.from("workspace_members").select("workspace_id").eq("user_id", userId);
+  const workspaceIds = (ws ?? []).map((w) => w.workspace_id);
+  if (workspaceIds.length === 0) return;
+  const { data: projects } = await admin.from("projects").select("id, name").in("workspace_id", workspaceIds).order("name");
+  if (!projects?.length) return;
+  const { data: rows } = await admin
+    .from("comments")
+    .select("id, number, title, body, project_id, page_id, author_user_id, author_guest_id, author_name, status")
+    .in("project_id", projects.map((p) => p.id))
+    .gte("created_at", since)
+    .is("context->qa", null) // page-check findings are filed in bulk and never emailed
+    .order("created_at");
+  const comments = (rows ?? []).filter((c) => c.author_user_id !== userId);
+  if (comments.length === 0) return;
+
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const sections = projects
+    .map((p) => ({ project: p, items: comments.filter((c) => c.project_id === p.id) }))
+    .filter((g) => g.items.length > 0)
+    .map((g) => ({
+      name: g.project.name,
+      url: `${env().APP_URL}/p/${g.project.id}`,
+      more: Math.max(0, g.items.length - DIGEST_PER_PROJECT),
+      lines: g.items.slice(0, DIGEST_PER_PROJECT).map((c) => ({
+        label: `#${c.number} ${clip(c.title ?? c.body, 90)}`,
+        by: `${c.author_guest_id ? `${c.author_name} (client)` : c.author_name}${c.status === "resolved" ? " · already resolved" : ""}`,
+        url: commentLink(c),
+      })),
+    }));
+  const summary = `${plural(comments.length, "new comment")} on ${sections.length === 1 ? sections[0]!.name : plural(sections.length, "project")}`;
+
+  const item = (l: { label: string; by: string; url: string }) =>
+    `<div style="margin-top:8px;border-left:3px solid #ffacca;background:#fff0f5;border-radius:8px;padding:9px 12px;font-size:14px;line-height:1.45"><a href="${esc(l.url)}" style="color:#0a0a0a;text-decoration:none">${esc(l.label)}</a><div style="font-size:12px;color:#6b665e">${esc(l.by)}</div></div>`;
+  const section = (s: (typeof sections)[number]) =>
+    `<tr><td style="padding:20px 28px 0"><a href="${esc(s.url)}" style="color:#0a0a0a;font-weight:500;font-size:15px;text-decoration:none">${esc(s.name)}</a>${s.lines.map(item).join("")}${
+      s.more ? `<div style="margin-top:8px;font-size:13px;color:#6b665e">and ${s.more} more in ${esc(s.name)}</div>` : ""
+    }</td></tr>`;
+  const html = `${SHELL_OPEN}
+<tr><td style="padding:20px 28px 0"><div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6b665e">Daily digest · last 24 hours</div>
+<h1 style="margin:8px 0 0;font-size:20px;font-weight:500;letter-spacing:-0.02em;line-height:1.3">${esc(summary)}</h1></td></tr>
+${sections.map(section).join("")}
+<tr><td style="padding:22px 28px 28px"><a href="${esc(env().APP_URL)}" style="display:inline-block;background:#96ff7c;color:#0a0a0a;text-decoration:none;font-weight:500;font-size:14px;padding:11px 18px;border-radius:10px">Open Basenine Feedback</a></td></tr>
+</table>
+<div style="max-width:520px;padding:14px 8px;font-size:12px;color:#6b665e">You chose one email a day for new comments. Change it in Basenine Feedback → Account.</div>
+</td></tr></table></body></html>`;
+  const text = [
+    `Daily digest: ${summary}`,
+    ...sections.map((s) => [s.name, ...s.lines.map((l) => `- ${l.label} (${l.by})\n  ${l.url}`), ...(s.more ? [`  and ${s.more} more: ${s.url}`] : [])].join("\n")),
+  ].join("\n\n");
+  await deliver([recipient], `Daily digest: ${summary}`, () => ({ html, text: `${text}\n` }));
+}
+
 async function deliver(recipients: Recipient[], subject: string, build: (r: Recipient) => { html: string; text: string }) {
   const seen = new Set<string>();
   for (const r of recipients) {
@@ -90,13 +160,15 @@ async function deliver(recipients: Recipient[], subject: string, build: (r: Reci
 export async function handleNotify(p: Payload): Promise<void> {
   const admin = supabaseAdmin();
 
+  if (p.event === "digest") return handleDigest(p.user_id, p.since);
+
   if (p.event === "comment.created") {
     const c = await loadComment(p.comment_id);
     if (!c) return;
     const { data: ws } = await admin.from("workspace_members").select("user_id").eq("workspace_id", c.project.workspace_id);
     const ids = (ws ?? []).map((m) => m.user_id).filter((id) => id !== c.author_user_id);
     const who = c.author_guest_id ? `${c.author_name} (client)` : c.author_name;
-    await deliver(await members(ids, "new_comments"), `New comment #${c.number} on ${c.project.name}: ${clip(c.body, 60)}`, () =>
+    await deliver(await members(ids, "new_comments", "skip"), `New comment #${c.number} on ${c.project.name}: ${clip(c.body, 60)}`, () =>
       layout({
         eyebrow: `${c.project.name} · ${c.page.title || new URL(c.page.url).pathname}`,
         heading: `${who} left comment #${c.number}`,
