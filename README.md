@@ -1,16 +1,24 @@
+<div align="center">
+
 # Basenine Feedback
 
-Visual feedback for client websites, built around one idea: **the tool should do the bookkeeping of a
-feedback round, so people only make the decisions.**
+**Visual feedback for client websites.**<br/>
+The tool does the bookkeeping of a feedback round, so people only make the decisions.
+
+[**Live app**](https://basenine-feedback.vercel.app) &nbsp;·&nbsp; [**Demo client site**](https://basefeed-demo.vercel.app) &nbsp;·&nbsp; [**Figma → Webflow assessment**](docs/figma-to-webflow.md)
+
+[![CI](https://github.com/n-3-0-l-d-3-v/basefeed/actions/workflows/ci.yml/badge.svg)](https://github.com/n-3-0-l-d-3-v/basefeed/actions/workflows/ci.yml)
+
+</div>
 
 A client clicks any element on the real site and types a comment. It arrives pinned to that element,
 with a screenshot, the Webflow classes, the device and the browser already attached. From there the
 tool labels it, flags what needs a decision, notices when it has been fixed, and asks the client to
 confirm, without anyone chasing anyone.
 
-[![CI](https://github.com/n-3-0-l-d-3-v/basefeed/actions/workflows/ci.yml/badge.svg)](https://github.com/n-3-0-l-d-3-v/basefeed/actions/workflows/ci.yml)
-
-**Contents:** [Why](#why-it-exists) · [What it does](#what-it-does) · [Architecture](#architecture) · [Guarantees](#guarantees-measured-not-claimed) · [Integrations](#integrations) · [Figma → Webflow](#figma--webflow-proof-of-concept) · [Run it](#run-locally) · [Tests](#tests) · [Deploy](#deploy) · [Limits](#known-limits)
+| Start here | How it works | Use it |
+|---|---|---|
+| [Why it exists](#why-it-exists)<br/>[What it does](#what-it-does)<br/>[Guarantees](#guarantees-measured-not-claimed)<br/>[Known limits](#known-limits) | [Architecture](#architecture)<br/>[Security](#security)<br/>[Integrations](#integrations)<br/>[Figma → Webflow](#figma--webflow-proof-of-concept) | [Run locally](#run-locally)<br/>[Install on a Webflow site](#install-on-a-webflow-site)<br/>[Tests](#tests)<br/>[Deploy](#deploy) |
 
 ---
 
@@ -29,81 +37,96 @@ Everything else is automation layered on top.
 
 ## What it does
 
-One feedback round as a pipeline. Every arrow used to be a person; the diamonds are the only places
-a person still decides.
+A feedback round has three stages. In the diagrams, the tool does every rectangular step by itself;
+the diamonds are the only places a person decides.
+
+### 1. Capture
 
 ```mermaid
 flowchart LR
-  A[Client clicks an element] --> B[Context captured<br/>screenshot, classes, device]
-  B --> C[AI triage<br/>label, extract copy change]
-  C --> D{Needs a decision?<br/>vague, duplicate,<br/>priority, new work}
-  D -- no --> E[On the board, labelled]
-  D -- yes, one click --> E
-  E --> F[Site is edited]
-  F --> G[Change detected<br/>likely fixed]
-  G --> H{Team verifies}
-  H --> I[Client emailed a link]
-  I --> J{Looks good?}
-  J -- yes --> K[Confirmed]
-  J -- not yet --> E
-  E -. webhooks, API, MCP .-> L[Slack, n8n, Zapier,<br/>coding agents]
+  A([Client clicks<br/>an element]) --> B[Comment pinned<br/>to that element]
+  B --> C[Screenshot, classes<br/>and device attached]
+  C --> D([On the board])
 ```
 
-**Capture**
 - **Auto-context.** Every comment carries a screenshot of the area, the element's selector and Webflow classes, breakpoint, viewport, browser and OS. Nobody asks "which page, on what device?".
 - **No account for clients.** A share link asks for a name and an email. Links are scoped to one site and revocable.
 - **Attachments** (choose or paste) from the site widget and the dashboard, **Loom** links played inline, comments on uploaded **design images**.
 
-**Sort**
+### 2. Sort
+
+```mermaid
+flowchart LR
+  A([New comment]) --> B[AI labels it and checks<br/>if a decision is needed]
+  B -- no --> E([Ready])
+  B -- yes --> D{Team decides<br/>in one click}
+  D --> E
+```
+
 - **AI triage that stays quiet.** A clear comment gets a short title and a category, nothing more. It speaks up only for: a comment too vague to act on (one click sends the clarifying question to the author), a duplicate of an older comment, a priority that is clearly wrong, and requests that are new work rather than a tweak. When the author dictates wording ("should say Book a demo") the exact replacement is extracted, ready to paste.
 - **Page check.** One click inspects the live page for dead links, missing alt text, empty or out-of-order headings, duplicate IDs, placeholder text, broken images, horizontal overflow and low contrast, and files each finding as a comment pinned to the element. Plain DOM inspection: no AI, same page in, same findings out.
 
-**Close**
+### 3. Close
+
+```mermaid
+flowchart LR
+  A[Site edited: comment<br/>flagged likely fixed] --> C{Team<br/>verifies}
+  C --> D[Client emailed<br/>a link]
+  D --> E{Looks<br/>good?}
+  E -- yes --> F([Confirmed])
+  E -- not yet --> G([Reopened])
+```
+
 - **Change detection.** When a commented element changes ("font-size 56px → 48px"), the comment is flagged as likely fixed. When the element is edited beyond recognition or removed, the comment says so, and a team member can re-pin it.
 - **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note.
 - **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. Counted from the data, never estimated.
 
-**Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved), Ctrl+K search, email notifications, team invites.
+### Around it
+
+- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved), Ctrl+K search, email notifications, team invites.
+- **Connections:** outgoing webhooks (Slack, n8n, Zapier), a REST API and an MCP server for coding agents. See [Integrations](#integrations).
 
 ## Architecture
 
 ### System
 
+Three parts: the widget on the client's site, the app, and the database.
+
 ```mermaid
 flowchart TB
-  subgraph site["Client site (its own origin)"]
-    L["loader.js · 883 B<br/>dormant for visitors"]
-    W["Widget · Preact, Shadow DOM<br/>anchoring, change detection, page check"]
+  subgraph site["Client site, on its own origin"]
+    L["loader.js, 883 B<br/>does nothing for visitors"]
+    W["Widget<br/>pins, change detection, page check"]
     L -->|feedback mode only| W
   end
 
-  subgraph app["Next.js 16 app (Vercel, Mumbai)"]
-    WA["/api/widget/*<br/>signed token + origin check + rate limit"]
+  subgraph app["App: Next.js on Vercel"]
+    WA["Widget API<br/>signed token, origin check, rate limit"]
     D["Dashboard<br/>runs as the signed-in user"]
-    API["/api/v1 · /api/mcp<br/>personal token"]
-    J["Job runner<br/>/api/jobs/run"]
+    API["REST API and MCP server<br/>personal token"]
+    J["Job runner"]
   end
 
-  subgraph db["Supabase (Postgres, Mumbai)"]
-    RLS["Row-level security<br/>on every table"]
-    T["Triggers: numbering, activity log,<br/>notifications, webhooks, sign-off"]
-    Q["Job queue<br/>SKIP LOCKED, backoff"]
-    C["pg_cron tick<br/>every minute"]
-    S["Storage<br/>private buckets"]
+  subgraph db["Database: Supabase Postgres"]
+    RLS["Tables<br/>row-level security on every one"]
+    Q["Job queue<br/>filled by triggers, retried with backoff"]
   end
 
-  W -->|CORS + bearer token| WA
-  D <-->|"postMessage (origin-checked)"| W
+  W -->|comments| WA
+  D <-->|origin-checked messages| W
   WA --> RLS
   D --> RLS
   API --> RLS
-  T --> Q
-  C -->|pg_net, only when work is ready| J
-  J --> Q
-  J --> AI["AI provider<br/>Gemini or Claude"]
-  J --> M["Email · Webhooks"]
-  RLS -. Realtime .-> D
+  RLS -->|triggers| Q
+  Q -->|cron tick, only when work is ready| J
+  J --> OUT["AI provider, email, webhooks"]
+
+  style site fill:transparent,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4 4
+  style app fill:transparent,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4 4
+  style db fill:transparent,stroke:#8b949e,stroke-width:1px,stroke-dasharray:4 4
 ```
+
+The dashboard also receives live updates from the database (Supabase Realtime), and files are kept in private storage buckets.
 
 | Package | What it is |
 |---|---|
@@ -252,7 +275,7 @@ Tools: `list_feedback`, `get_feedback` (selector, Webflow classes, the request, 
 
 ### REST API
 
-| | |
+| Request | What it does |
 |---|---|
 | `GET /api/v1/feedback?status=unresolved&project=…&limit=…` | List |
 | `GET /api/v1/feedback/:id` | One comment, with the same hand-off text as "Copy for AI agent" |

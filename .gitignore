@@ -13,3 +13,6 @@ apps/web/public/widget/
 
 # Local session handoff notes
 PROJECT_CONTEXT.md
+
+# Local editor/agent config
+.claude/
