@@ -23,6 +23,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm --filter web lint
       # Unit + property tests: the "never attaches to a different element" guarantee.
       - run: pnpm --filter @bn/anchor test
       - run: pnpm --filter web test

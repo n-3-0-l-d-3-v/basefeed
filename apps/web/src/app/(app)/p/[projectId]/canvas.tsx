@@ -61,14 +61,18 @@ export function Canvas({
   const [device, setDevice] = useState<DeviceId>("desktop");
   const [mode, setMode] = useState<"comment" | "browse">("comment");
   const modeRef = useRef(mode);
-  modeRef.current = mode;
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
   const [filter, setFilter] = useState<Filter>("open");
   const [selectedId, setSelectedId] = useState<string | null>(search.get("c"));
   const linked = search.get("c");
   // Follow links that point at a comment (search, notifications) even when already on this canvas.
-  useEffect(() => {
+  const [followed, setFollowed] = useState(linked);
+  if (linked !== followed) {
+    setFollowed(linked);
     if (linked) setSelectedId(linked);
-  }, [linked]);
+  }
   const [frame, setFrame] = useState<FrameState>("loading");
   const [addOpen, setAddOpen] = useState(false);
   const [unlisted, setUnlisted] = useState<string | null>(null);
@@ -135,10 +139,17 @@ export function Canvas({
     return () => ro.disconnect();
   }, []);
 
+  // A different framed page (or a reload) starts a new handshake from "loading".
+  const framed = `${page?.id ?? ""}|${origin ?? ""}|${reload}`;
+  const [handshake, setHandshake] = useState(framed);
+  if (handshake !== framed) {
+    setHandshake(framed);
+    setFrame("loading");
+  }
+
   // Handshake with the widget inside the frame. Both sides check origins; the token is scoped to this site.
   useEffect(() => {
     if (!page || !origin) return;
-    setFrame("loading");
     // Mint the session while the site loads, so answering the widget is instant.
     const token = mintEmbedToken(project.id, page.url);
     const timer = window.setTimeout(() => setFrame((f) => (f === "loading" ? "missing" : f)), WIDGET_TIMEOUT_MS);

@@ -8,7 +8,12 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 export function useLiveComments(projectId: string, initial: DashboardComment[]) {
   const [comments, setComments] = useState(initial);
 
-  useEffect(() => setComments(initial), [initial]);
+  // New server data (navigation, revalidation) replaces the list.
+  const [source, setSource] = useState(initial);
+  if (source !== initial) {
+    setSource(initial);
+    setComments(initial);
+  }
 
   const upsert = useCallback(
     (row: DashboardComment) =>

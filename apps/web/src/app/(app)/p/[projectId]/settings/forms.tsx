@@ -74,6 +74,8 @@ export function OriginsForm({ projectId, initial }: { projectId: string; initial
 type Link = { id: string; label: string; created_at: string; expires_at: string | null; revoked_at: string | null };
 
 export function ShareLinks({ projectId, links }: { projectId: string; links: Link[] }) {
+  // Fixed at mount: "expired" doesn't need to tick while the page is open.
+  const [now] = useState(() => Date.now());
   const [label, setLabel] = useState("");
   const [days, setDays] = useState("30");
   const [fresh, setFresh] = useState<string | null>(null);
@@ -143,7 +145,7 @@ export function ShareLinks({ projectId, links }: { projectId: string; links: Lin
       {links.length > 0 && (
         <ul className="divide-y divide-line overflow-hidden rounded-lg ring-1 ring-line">
           {links.map((l) => {
-            const expired = l.expires_at && Date.parse(l.expires_at) < Date.now();
+            const expired = l.expires_at && Date.parse(l.expires_at) < now;
             const state = l.revoked_at ? "off" : expired ? "expired" : "active";
             return (
               <li key={l.id} className="flex items-center gap-3 px-3 py-2 text-sm">

@@ -67,9 +67,14 @@ export function CommentDetail({
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // A different comment starts empty; an update to the same one refreshes in place, without a "Loading…" flash.
+  const [shown, setShown] = useState(c.id);
+  if (shown !== c.id) {
+    setShown(c.id);
+    setThread(null);
+  }
   useEffect(() => {
     let live = true;
-    setThread(null);
     void getThread(c.id).then((t) => live && setThread(t));
     return () => {
       live = false;
