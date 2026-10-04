@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, Copy, GripVertical, Search } from "lucide-react";
+import { Check, Copy, Download, GripVertical, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CommentDetail } from "@/components/comment-detail";
 import { Pin } from "@/components/pin";
@@ -120,9 +120,17 @@ export function Board({
           <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} className="size-4 accent-[#b8245f]" />
           Needs a look
         </label>
+        <a
+          href={`/p/${projectId}/export`}
+          download
+          title="Every comment in this project as a spreadsheet file"
+          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium text-ink-2 hover:bg-sunken hover:text-ink [&_svg]:size-4"
+        >
+          <Download aria-hidden />
+          Export CSV
+        </a>
         <Button
           size="sm"
-          className="ml-auto"
           onClick={async () => {
             const list = filtered.filter((c) => c.status !== "resolved");
             await navigator.clipboard.writeText(commentsToMarkdown(list, urlOf));
