@@ -182,6 +182,16 @@ test.describe("team on the dashboard", () => {
     await page.reload();
     await expect(rule).toHaveValue(/.+/); // stored, not just chosen on screen
 
+    // The same page sets how long a silent client is left alone before one reminder.
+    const reminder = page.getByLabel(/Remind a client/);
+    await expect(reminder).toHaveValue("3");
+    await reminder.selectOption({ label: "After 7 days" });
+    await expect(page.getByRole("status").filter({ hasText: "Saved." }).first()).toBeVisible();
+    await page.reload();
+    await expect(reminder).toHaveValue("7");
+    await reminder.selectOption({ label: "After 3 days" });
+    await expect(page.getByRole("status").filter({ hasText: "Saved." }).first()).toBeVisible();
+
     try {
       // The page check files a dead link as a bug: nobody assigns it, the rule does.
       await page.goto(`/p/${PROJECT}`);
@@ -373,11 +383,19 @@ test.describe("clients via share link", () => {
       await client.close();
 
       // What the database does every morning (pg_cron), then what its ticker does: call the job runner.
-      const queued = await request.post(`${localEnv("NEXT_PUBLIC_SUPABASE_URL")}/rest/v1/rpc/queue_daily_digests`, {
-        headers: { apikey: localEnv("SUPABASE_SERVICE_ROLE_KEY"), authorization: `Bearer ${localEnv("SUPABASE_SERVICE_ROLE_KEY")}` },
-        data: {},
-      });
-      expect(await queued.json()).toBe(1);
+      // The digest goes out at 09:00 in the member's own time zone (stored from this browser when the
+      // switch was turned on), so step through tomorrow's half hours until it is that member's morning.
+      const queue = async (at: Date) =>
+        (await (
+          await request.post(`${localEnv("NEXT_PUBLIC_SUPABASE_URL")}/rest/v1/rpc/queue_daily_digests`, {
+            headers: { apikey: localEnv("SUPABASE_SERVICE_ROLE_KEY"), authorization: `Bearer ${localEnv("SUPABASE_SERVICE_ROLE_KEY")}` },
+            data: { p_now: at.toISOString() },
+          })
+        ).json()) as number;
+      const firstSlot = Math.ceil(Date.now() / 900_000) * 900_000; // quarter hours cover zones on :00, :30 and :45
+      const queuedAt: number[] = [];
+      for (let i = 0; i < 96; i++) if ((await queue(new Date(firstSlot + i * 900_000))) === 1) queuedAt.push(i);
+      expect(queuedAt).toHaveLength(1); // one digest for the day, and only in the morning half hour
       const ran = await request.get("/api/jobs/run", { headers: { authorization: `Bearer ${localEnv("CRON_SECRET")}` } });
       expect(ran.ok()).toBe(true);
 
@@ -504,7 +522,7 @@ test.describe("clients via share link", () => {
     await expect(detail.getByLabel("Status")).toHaveValue("open");
     await expect(detail.getByText("Still small on my laptop")).toBeVisible();
     await detail.getByText(/^History/).click();
-    await expect(detail.getByText("Reminder emailed the client, who had not answered for three days")).toBeVisible();
+    await expect(detail.getByText("Reminder emailed the client, who had not answered for 3 days")).toBeVisible();
 
     // The team can also hand the client that status page themselves: one click copies the link.
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
