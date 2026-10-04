@@ -544,6 +544,25 @@ test.describe("team", () => {
   });
 });
 
+test.describe("export", () => {
+  test("the board exports every comment as a CSV file; signed-out visitors get nothing", async ({ page, request }) => {
+    await login(page);
+    await page.goto(`/p/${PROJECT}/board`);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Export CSV" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/-feedback\.csv$/);
+    const csv = (await (await page.request.get(`/p/${PROJECT}/export`)).text()).replace(/^\uFEFF/, "");
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe("Number,Status,Priority,Category,Title,Comment,Author,From,Assignee,Page,Element,Webflow classes,Device,Client sign-off,Created,Resolved,Link");
+    expect(csv).toContain("Logo should be bigger");
+    expect(csv).toContain("Robin Client,Client"); // names and who it came from, not ids
+    expect(csv).toContain("Confirmed by client");
+
+    const anonymous = await request.get(`/p/${PROJECT}/export`, { maxRedirects: 0 });
+    expect(anonymous.status()).toBe(307);
+    expect(anonymous.headers().location).toContain("/login");
+  });
+});
+
 test.describe("widget API security", () => {
   test("rejects missing and forged credentials", async ({ request }) => {
     const none = await request.get("/api/widget/me", { headers: { origin: SITE } });

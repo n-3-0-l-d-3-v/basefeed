@@ -85,7 +85,7 @@ flowchart LR
 
 ### Around it
 
-- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved), Ctrl+K search, team invites.
+- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved, export everything as CSV), Ctrl+K search, team invites.
 - **Email:** new comments, assignments and replies, each switchable per person. New comments can arrive as one digest a day instead of one email each.
 - **Connections:** outgoing webhooks (Slack, n8n, Zapier), a REST API and an MCP server for coding agents. See [Integrations](#integrations).
 
@@ -326,14 +326,14 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-164 automated tests, plus type checks and lint, on every push.
+170 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 27 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
 | Database | 83 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders |
-| End to end | 19 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, API security |
-| Web | 12 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety |
+| End to end | 20 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, API security |
+| Web | 17 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety, CSV export (including formula-injection safety) |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
 | Compiler | 14 | `pnpm --filter @bn/compiler test` | Reuse before creation, idempotency, deltas, naming validation, 300 random pages per run |
 
