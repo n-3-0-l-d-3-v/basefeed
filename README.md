@@ -161,7 +161,7 @@ sequenceDiagram
   A->>J: drain queue after the response is sent
   J->>X: triage (structured output)
   X-->>J: label + flags
-  J->>P: store; "ready" only if a person must decide
+  J->>P: store the labels, mark "ready" only if a person must decide
   P-->>T: Realtime: comment appears, already labelled
 ```
 
