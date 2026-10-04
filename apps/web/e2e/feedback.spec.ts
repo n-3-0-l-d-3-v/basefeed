@@ -337,7 +337,13 @@ test.describe("clients via share link", () => {
     await login(page);
     await page.goto("/account");
     const digest = page.getByRole("switch", { name: /Once a day instead/ });
-    await page.getByText("Once a day instead").click();
+    // The switch saves in the background; wait for that request before reloading.
+    const toggle = async () => {
+      const saved = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/account"));
+      await page.getByText("Once a day instead").click();
+      await saved;
+    };
+    await toggle();
     await expect(digest).toBeChecked();
     await page.reload(); // saved, not just toggled on screen
     await expect(digest).toBeChecked();
@@ -384,7 +390,7 @@ test.describe("clients via share link", () => {
       expect(subjects.filter((s) => s.startsWith("New comment"))).toEqual([]);
     } finally {
       await page.goto("/account");
-      if (await digest.isChecked()) await page.getByText("Once a day instead").click();
+      if (await digest.isChecked()) await toggle();
       await expect(digest).not.toBeChecked();
       await page.reload();
       await expect(digest).not.toBeChecked();
