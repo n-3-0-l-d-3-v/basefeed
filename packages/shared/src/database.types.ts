@@ -151,13 +151,13 @@ isOneToOne: false
                   ]
                 },"notification_prefs": {
                   Row: {
-                    "assignments": boolean,"new_comments": boolean,"replies": boolean,"updated_at": string,"user_id": string
+                    "assignments": boolean,"daily_digest": boolean,"new_comments": boolean,"replies": boolean,"updated_at": string,"user_id": string
                   }
                   Insert: {
-                    "assignments"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id": string
+                    "assignments"?: boolean,"daily_digest"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "assignments"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id"?: string
+                    "assignments"?: boolean,"daily_digest"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     
@@ -395,6 +395,9 @@ isOneToOne: false
                            },
 "is_member":
 { Args: { "ws": string }; Returns: boolean
+                           },
+"queue_daily_digests":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "queue_webhooks":
 { Args: { "p_actor": string,"p_comment": string,"p_event": string,"p_meta"?: Json,"p_project": string }; Returns: undefined
