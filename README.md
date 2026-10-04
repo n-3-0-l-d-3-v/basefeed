@@ -11,6 +11,8 @@ The tool does the bookkeeping of a feedback round, so people only make the decis
 
 </div>
 
+<p align="center"><img src="docs/images/canvas.png" alt="The Canvas: a client site on its own origin with every comment pinned to its element" width="100%"></p>
+
 A client clicks any element on the real site and types a comment. It arrives pinned to that element,
 with a screenshot, the Webflow classes, the device and the browser already attached. From there the
 tool labels it, flags what needs a decision, notices when it has been fixed, and asks the client to
@@ -18,9 +20,19 @@ confirm, without anyone chasing anyone.
 
 | Start here | How it works | Use it |
 |---|---|---|
-| [Why it exists](#why-it-exists)<br/>[What it does](#what-it-does)<br/>[Guarantees](#guarantees-measured-not-claimed)<br/>[Known limits](#known-limits) | [Architecture](#architecture)<br/>[Security](#security)<br/>[Integrations](#integrations)<br/>[Figma → Webflow](#figma--webflow-proof-of-concept) | [Run locally](#run-locally)<br/>[Install on a Webflow site](#install-on-a-webflow-site)<br/>[Tests](#tests)<br/>[Deploy](#deploy) |
+| [In one minute](#in-one-minute)<br/>[Why it exists](#why-it-exists)<br/>[A feedback round, step by step](#a-feedback-round-step-by-step)<br/>[What is automated](#what-is-automated) | [Architecture](#architecture)<br/>[Security](#security)<br/>[Guarantees](#guarantees-measured-not-claimed)<br/>[Integrations](#integrations)<br/>[Figma → Webflow](#figma--webflow-proof-of-concept) | [Try the live demo](#try-the-live-demo)<br/>[Run locally](#run-locally)<br/>[Install on a Webflow site](#install-on-a-webflow-site)<br/>[Tests](#tests) · [Deploy](#deploy)<br/>[What it needs to go live](#what-it-needs-to-go-live-at-a-studio)<br/>[Known limits](#known-limits) |
+
+> Every screenshot on this page is taken by a script from the running app with the demo data and the
+> real AI provider ([`apps/web/screens`](apps/web/screens)); none is a mock-up. Rebuild them with `pnpm --filter web screens`.
 
 ---
+
+## In one minute
+
+- **What it is.** A feedback tool for a Webflow studio: clients comment on the real site, the team works from a canvas and a board, and the tool does the bookkeeping in between.
+- **What changed from Feedback 2.0.** No proxy (so Cloudflare-protected sites work), comments that stay on their element when the page is edited, and client sites that stay on their own origin.
+- **What it automates.** Capturing context, labelling and sorting, assigning, noticing fixes, asking the client to confirm, reminding them, and telling Slack or n8n. People only decide.
+- **How far it is trusted.** 176 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
 
 ## Why it exists
 
@@ -35,10 +47,10 @@ structural, so they were fixed by changing the design rather than patching:
 
 Everything else is automation layered on top.
 
-## What it does
+## A feedback round, step by step
 
-A feedback round has three stages. In the diagrams, the tool does every rectangular step by itself;
-the diamonds are the only places a person decides.
+A round has three stages. In the diagrams, the tool does every rectangular step by itself; the
+diamonds are the only places a person decides.
 
 ### 1. Capture
 
@@ -48,6 +60,11 @@ flowchart LR
   B --> C[Screenshot, classes<br/>and device attached]
   C --> D([On the board])
 ```
+
+<p align="center"><img src="docs/images/comment.png" alt="A client comment with its element, Webflow classes, viewport and device captured, and the exact copy change extracted" width="100%"></p>
+
+*A client asked for a button to say "Book a demo". The element, its classes, the viewport and the
+device were captured with the comment; the replacement text was pulled out, ready to paste.*
 
 - **Auto-context.** Every comment carries a screenshot of the area, the element's selector and Webflow classes, breakpoint, viewport, browser and OS. Nobody asks "which page, on what device?".
 - **No account for clients.** A share link asks for a name and an email. Links are scoped to one site and revocable.
@@ -63,9 +80,16 @@ flowchart LR
   D --> E
 ```
 
+<p align="center"><img src="docs/images/ai-flag.png" alt="The AI flags a vague client comment and offers one click to send the clarifying question" width="100%"></p>
+
+*"This doesn't feel right. Can you fix it?" cannot be acted on. The AI says so, drafts the question,
+and one click sends it to the client. On a clear comment there is no AI card at all.*
+
 - **AI triage that stays quiet.** A clear comment gets a short title and a category, nothing more. It speaks up only for: a comment too vague to act on (one click sends the clarifying question to the author), a duplicate of an older comment, a priority that is clearly wrong, and requests that are new work rather than a tweak. When the author dictates wording ("should say Book a demo") the exact replacement is extracted, ready to paste.
 - **Assignment rules.** Per project: copy goes to the writer, bugs to the developer. The rule applies the moment a comment is labelled (by triage, the page check or a person), is recorded in the comment's history as a rule, and only ever fills an empty assignee.
 - **Page check.** One click inspects the live page for dead links, missing alt text, empty or out-of-order headings, duplicate IDs, placeholder text, broken images, horizontal overflow and low contrast, and files each finding as a comment pinned to the element. Plain DOM inspection: no AI, same page in, same findings out.
+
+<p align="center"><img src="docs/images/page-check.png" alt="The page check panel listing dead links and low-contrast text found on the live page" width="420"></p>
 
 ### 3. Close
 
@@ -78,16 +102,62 @@ flowchart LR
   E -- not yet --> G([Reopened])
 ```
 
-- **Change detection.** When a commented element changes ("font-size 56px → 48px"), the comment is flagged as likely fixed. When the element is edited beyond recognition or removed, the comment says so, and a team member can re-pin it.
-- **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note. A client who has not answered after three days gets one reminder covering everything of theirs that is waiting; it is recorded in each comment's history and never repeated.
-- **Client status page.** Every email to a client carries one link to a read-only page listing each comment they left and where it stands: waiting for them, being worked on, not started, done. No account. The team can copy the same link from any client comment.
-- **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. Counted from the data, never estimated.
+<p align="center"><img src="docs/images/likely-fixed.png" alt="A comment whose element changed after it was written, flagged as likely fixed with what changed" width="100%"></p>
 
-### Around it
+*The site was edited after the comment. The tool shows what changed on that element and offers to
+verify, instead of someone re-reading every open comment against the new page.*
+
+- **Change detection.** When a commented element changes ("font-size 56px → 48px"), the comment is flagged as likely fixed. When the element is edited beyond recognition or removed, the comment says so, and a team member can re-pin it.
+- **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note. A client who has not answered after three days (the project chooses how many, or never) gets one reminder covering everything of theirs that is waiting; it is recorded in each comment's history and never repeated.
+
+<p align="center"><img src="docs/images/client-signoff.png" alt="What the client sees: their own site, their comment, and two buttons, Looks good and Not yet" width="100%"></p>
+
+*The client's side: their own site, their comment, two buttons. No account, no dashboard to learn.*
+
+- **Client status page.** Every email to a client carries one link to a read-only page listing each comment they left and where it stands: waiting for them, being worked on, not started, done. No account. The team can copy the same link from any client comment.
+
+<p align="center"><img src="docs/images/client-status.png" alt="The client status page listing a client's comments by where they stand" width="80%"></p>
+
+### Running the project
+
+<p align="center"><img src="docs/images/board.png" alt="The board: comments in Open, In progress and Resolved columns" width="100%"></p>
 
 - **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved, export everything as CSV), Ctrl+K search, team invites.
-- **Email:** new comments, assignments and replies, each switchable per person. New comments can arrive as one digest a day instead of one email each.
+- **Email:** new comments, assignments and replies, each switchable per person. New comments can arrive as one digest a day, at 09:00 in that person's own time zone, instead of one email each.
 - **Connections:** outgoing webhooks (Slack, n8n, Zapier), a REST API and an MCP server for coding agents. See [Integrations](#integrations).
+- **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. Counted from the data, never estimated.
+
+<p align="center"><img src="docs/images/impact.png" alt="The Impact tab: counts of what the tool handled on this project" width="100%"></p>
+
+## What is automated
+
+Each row is a step somebody does by hand in a feedback round run over email, chat or a tool that only stores comments.
+
+| Step | Done by | How |
+|---|---|---|
+| Recording which page, element, device and browser | The widget | Captured with the click, with a screenshot |
+| Giving the comment a title and a category | AI triage | Applied silently; a person can change it |
+| Spotting vague comments, duplicates, wrong priorities and new work | AI triage | Flagged for a person; nothing is sent or changed without a click |
+| Pulling out the exact new wording | AI triage | Shown as "from → to", ready to paste |
+| Giving it to the right person | Assignment rules | By category, the moment it is labelled; recorded as a rule |
+| Finding dead links, missing alt text, overflow, low contrast | Page check | Plain inspection of the live page, filed as pinned comments |
+| Noticing that a commented element was changed or removed | Change detection | Compared with what the element looked like when the comment was made |
+| Asking the client whether the fix is right | Database trigger + email | Sent when a client's comment is resolved, with a signed link |
+| Reminding a client who has not answered | Daily job | Once, after the number of days the project chose, one email for everything waiting |
+| Telling the client where everything stands | Client status page | One read-only link, in every email |
+| Telling the team's other tools | Webhooks | Signed, retried, with a ready-made sentence for Slack |
+| Handing a task to a coding agent | REST API, MCP server | The same hand-off text as "Copy for AI agent" |
+| Keeping the record of who did what | Database triggers | Activity log written by the database, not by application code |
+
+What stays with people: deciding what to do about a flag, verifying a fix, and the client's yes or no.
+
+## Try the live demo
+
+1. Open the [demo client site](https://basefeed-demo.vercel.app). It is an ordinary page: the 883-byte loader does nothing for visitors.
+2. Sign up on the [live app](https://basenine-feedback.vercel.app), create a project for a site you control, and paste the one-line script from Settings into that site.
+3. Open the project's Canvas, click an element, leave a comment. Then create a share link in Settings and open it in a private window to comment as a client.
+
+The demo deployment runs on free tiers: AI triage is limited to roughly 100 comments a day, and email is only delivered to the project owner's own address until a sending domain is verified.
 
 ## Architecture
 
@@ -205,7 +275,7 @@ Also: `jobs` (the queue), `rate_limits`, `api_tokens` (stored as SHA-256 hashes)
 
 ### Background work
 
-One Postgres table is the queue for AI triage, email and webhooks. Workers claim with `FOR UPDATE SKIP LOCKED`; failures retry up to five times with exponential backoff and jitter; a job stuck for five minutes is reclaimed. The app drains the queue right after each write. For retries, `pg_cron` ticks every minute and calls the app through `pg_net` only when a job is ready, so an idle project makes no requests. (Vercel's free plan allows only daily crons; this needs none.)
+One Postgres table is the queue for AI triage, email and webhooks. Workers claim one job at a time with `FOR UPDATE SKIP LOCKED`, so a run that is cut short leaves nothing locked; a run stops starting new work after 30 seconds to stay inside the serverless time limit; failures retry up to five times with exponential backoff and jitter; a job stuck for five minutes is reclaimed. The app drains the queue right after each write. For retries, `pg_cron` ticks every minute and calls the app through `pg_net` only when a job is ready, so an idle project makes no requests. (Vercel's free plan allows only daily crons; this needs none.)
 
 ### Security
 
@@ -326,12 +396,12 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-170 automated tests, plus type checks and lint, on every push.
+176 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 27 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
-| Database | 83 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders |
+| Database | 89 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders |
 | End to end | 20 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, API security |
 | Web | 17 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety, CSV export (including formula-injection safety) |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
@@ -354,12 +424,31 @@ Supabase (database, auth, storage, realtime) and Vercel (the app), both in the s
 
 The demo client site deploys from `e2e/site` as its own Vercel project (set `APP_URL`); `supabase/demo/` holds realistic demo data.
 
+## What it needs to go live at a studio
+
+Nothing here is built on assumptions about a specific studio. To move from the demo to real client work:
+
+| Needed | Why | Rough size |
+|---|---|---|
+| A Webflow staging site with the one-line script in its footer | First test on real Webflow markup, interactions and CMS pages | Minutes to install; a day to work through what it finds |
+| A sending domain verified with the email provider | Today email reaches only the account owner's address | An hour, mostly DNS |
+| A paid AI key (Gemini or Claude; both are supported) | The free tier allows roughly 100 comments a day | Minutes |
+| One real feedback round with a client | The only way to measure time saved and find what clients trip over | One project |
+| A decision on scheduled "likely fixed" checks | They need a real browser on a schedule, and a browser in a data centre meets the same bot checks a proxy does | A decision first, then about a week |
+
 ## Known limits
 
 - Content inside cross-origin iframes or closed shadow roots on the client site cannot be pinned.
 - Screenshots are rendered from the DOM in the browser; cross-origin images without CORS headers may appear blank in them.
 - Sites that forbid framing (CSP `frame-ancestors`) cannot be shown inside the Canvas; feedback mode in a new tab works the same.
 - Change detection runs when a team member opens the page; there is no scheduled re-check yet.
-- The daily digest goes out at one fixed time (09:00 India time) and covers new comments only; assignments, replies and client sign-offs are always sent straight away.
+- The daily digest covers new comments only; assignments, replies and client sign-offs are always sent straight away.
 - Widget attachments are limited to 4 MB (10 MB from the dashboard).
 - Email confirmation on sign-up is not wired up; the demo deployment has it switched off.
+
+**Not yet verified outside tests and the demo site:**
+
+- A real Webflow site (the demo site uses Webflow-style markup and Client-First class names, but is hand-written).
+- A real Slack, n8n or Zapier endpoint for webhooks, and a real Claude Code or Cursor connection to the MCP server (both are tested at the protocol level).
+- The daily timers (digest, client reminder) firing in production: tests call the same database functions the timers call.
+- Time saved on a real project, and real clients using it.
