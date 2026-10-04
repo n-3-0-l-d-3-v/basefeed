@@ -61,6 +61,25 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"assign_rules": {
+                  Row: {
+                    "assignee_id": string,"category": string,"created_at": string,"project_id": string
+                  }
+                  Insert: {
+                    "assignee_id": string,"category": string,"created_at"?: string,"project_id": string
+                  }
+                  Update: {
+                    "assignee_id"?: string,"category"?: string,"created_at"?: string,"project_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "assign_rules_project_id_fkey"
+      columns: ["project_id"]
+isOneToOne: false
+      referencedRelation: "projects"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"attachments": {
                   Row: {
                     "comment_id": string,"created_at": string,"created_by": string | null,"id": string,"mime": string,"name": string,"path": string,"project_id": string,"size": number

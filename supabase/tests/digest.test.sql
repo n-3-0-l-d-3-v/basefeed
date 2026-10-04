@@ -29,23 +29,28 @@ insert into public.comments (project_id, page_id, author_guest_id, author_user_i
   ('10000000-0000-0000-0000-0000000000d3', '20000000-0000-0000-0000-0000000000d3', '40000000-0000-0000-0000-0000000000d3', null, 'Priya', 'Image has no alt text', '{"x":0.5,"y":0.2}', '{"qa":"alt"}', now()),
   ('10000000-0000-0000-0000-0000000000d3', '20000000-0000-0000-0000-0000000000d3', '40000000-0000-0000-0000-0000000000d3', null, 'Priya', 'Two days old', '{"x":0.5,"y":0.2}', '{}', now() - interval '2 days');
 
-select is(public.queue_daily_digests(), 1, 'one digest is queued: for the member who asked and has something new');
+-- Counted for this test's members only, so the result does not depend on what else is in the database.
+do $$ begin perform public.queue_daily_digests(); end $$;
+select is((select count(*)::int from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' like '00000000-0000-0000-0000-0000000000d_'), 1,
+  'one digest is queued: for the member who asked and has something new');
 select is(
-  (select payload ->> 'user_id' from public.jobs where payload ->> 'event' = 'digest'),
+  (select payload ->> 'user_id' from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' like '00000000-0000-0000-0000-0000000000d_'),
   '00000000-0000-0000-0000-0000000000d1', 'it is for that member');
 select ok(
-  (select (payload ->> 'since')::timestamptz between now() - interval '24 hours 1 minute' and now() - interval '23 hours 59 minutes' from public.jobs where payload ->> 'event' = 'digest'),
+  (select (payload ->> 'since')::timestamptz between now() - interval '24 hours 1 minute' and now() - interval '23 hours 59 minutes' from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' like '00000000-0000-0000-0000-0000000000d_'),
   'it covers the last 24 hours');
-select is(public.queue_daily_digests(), 0, 'running it again the same day queues nothing more');
+do $$ begin perform public.queue_daily_digests(); end $$;
+select is((select count(*)::int from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' like '00000000-0000-0000-0000-0000000000d_'), 1, 'running it again the same day queues nothing more');
 
 -- Own comments, page-check findings and comments older than a day do not make a digest.
 select is((select count(*)::int from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' = '00000000-0000-0000-0000-0000000000d3'), 0,
   'nothing new for a member means no digest and no email');
 
 -- Switching "New comments" off switches the digest off too.
-delete from public.jobs where payload ->> 'event' = 'digest';
+delete from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' like '00000000-0000-0000-0000-0000000000d_';
 update public.notification_prefs set new_comments = false where user_id = '00000000-0000-0000-0000-0000000000d1';
-select is(public.queue_daily_digests(), 0, 'no digest for a member who turned new-comment emails off');
+do $$ begin perform public.queue_daily_digests(); end $$;
+select is((select count(*)::int from public.jobs where payload ->> 'event' = 'digest' and payload ->> 'user_id' like '00000000-0000-0000-0000-0000000000d_'), 0, 'no digest for a member who turned new-comment emails off');
 
 set local role authenticated;
 select throws_ok($$ select public.queue_daily_digests() $$, '42501', null, 'signed-in users cannot trigger digests');
