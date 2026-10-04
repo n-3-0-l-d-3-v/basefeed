@@ -489,6 +489,17 @@ test.describe("clients via share link", () => {
     await expect(detail.getByText("Sent back by Robin")).toBeVisible();
     await expect(detail.getByLabel("Status")).toHaveValue("open");
     await expect(detail.getByText("Still small on my laptop")).toBeVisible();
+
+    // The team can also hand the client that status page themselves: one click copies the link.
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await detail.getByRole("button", { name: "Copy client status link" }).click();
+    await expect(detail.getByRole("button", { name: "Link copied" })).toBeVisible();
+    const copiedUrl = await page.evaluate(() => navigator.clipboard.readText());
+    const outsider = await browser.newContext(); // not signed in to anything
+    const view = await outsider.newPage();
+    await view.goto(copiedUrl);
+    await expect(view.getByRole("heading", { name: "Your feedback, Robin Client" })).toBeVisible();
+    await outsider.close();
     await expect.poll(async () => (await inbox("demo@basenine.test")).some((m) => m.Subject.startsWith("Not fixed yet")), { timeout: 20_000 }).toBe(true);
   });
 });

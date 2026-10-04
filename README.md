@@ -80,7 +80,7 @@ flowchart LR
 
 - **Change detection.** When a commented element changes ("font-size 56px → 48px"), the comment is flagged as likely fixed. When the element is edited beyond recognition or removed, the comment says so, and a team member can re-pin it.
 - **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note.
-- **Client status page.** Every email to a client carries one link to a read-only page listing each comment they left and where it stands: waiting for them, being worked on, not started, done. No account.
+- **Client status page.** Every email to a client carries one link to a read-only page listing each comment they left and where it stands: waiting for them, being worked on, not started, done. No account. The team can copy the same link from any client comment.
 - **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. Counted from the data, never estimated.
 
 ### Around it
