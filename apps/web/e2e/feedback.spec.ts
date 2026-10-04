@@ -151,6 +151,26 @@ test.describe("team on the dashboard", () => {
       .toBeLessThan(30);
   });
 
+  test("the page check finds real problems and files them as pinned comments", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1400 });
+    await page.goto(`/p/${PROJECT}`);
+    const site = await siteFrame(page);
+    await site.getByRole("button", { name: "Check page" }).click();
+    const panel = site.getByRole("dialog", { name: "Page check" });
+    await expect(panel.getByText('The link "Learn more" goes nowhere (href="#").').first()).toBeVisible();
+
+    const row = panel.getByRole("listitem").filter({ hasText: 'The link "Customers" goes nowhere' });
+    await row.getByRole("button", { name: /^Add as a comment/ }).click();
+    // The dashboard opens it, labelled by the rule (no AI involved) and pinned to that link.
+    const detail = page.getByRole("article", { name: /Comment \d+/ });
+    await expect(detail.getByRole("heading", { name: "Link goes nowhere" })).toBeVisible();
+    await expect(detail.getByText("Page check")).toBeVisible();
+    await expect(detail.getByText(".navbar_link", { exact: true })).toBeVisible();
+    // A filed finding shows its number instead of Add, so checking again never files it twice.
+    await expect(row.getByText(/^#\d+$/)).toBeVisible();
+    await expect(row.getByRole("button", { name: /^Add as a comment/ })).toHaveCount(0);
+  });
+
   test("uploads a design image and pins a comment on it", async ({ page }, testInfo) => {
     const design = testInfo.outputPath("design.png");
     const shooter = await page.context().newPage();

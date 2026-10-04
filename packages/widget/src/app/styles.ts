@@ -96,6 +96,11 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 4px rgba(150,255,12
 .files button { border: 0; background: none; color: var(--muted); padding: 0 0 0 2px; font-size: 14px; line-height: 1; }
 .files .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
 .btn.icon { padding: 0; width: 34px; justify-content: center; }
+.list li.split { display: flex; align-items: center; }
+.list li.split > button:first-child { flex: 1; min-width: 0; }
+.list li.split > .btn { width: auto; flex: none; margin-right: 10px; height: 28px; padding: 0 10px; font-size: 12px; display: inline-flex; gap: 6px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line-2); }
+.list li.split > .filed { flex: none; margin-right: 12px; font-size: 12px; color: var(--muted); }
+.list .line .t.wrap { white-space: normal; line-height: 1.4; }
 .spacer { flex: 1; }
 .hint { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .meta { color: var(--muted); font-size: 12px; }

@@ -15,6 +15,8 @@ export interface Impact {
   fixesSpotted: number;
   pins: { onElement: number; flagged: number };
   signOff: { asked: number; confirmed: number; sentBack: number; waiting: number };
+  /** Problems the automated page check found (before a client had to). */
+  pageCheck: number;
   resolved: number;
   medianHoursToResolve: number | null;
 }
@@ -33,6 +35,7 @@ export function impact(comments: readonly Row[]): Impact {
     fixesSpotted: 0,
     pins: { onElement: 0, flagged: 0 },
     signOff: { asked: 0, confirmed: 0, sentBack: 0, waiting: 0 },
+    pageCheck: 0,
     resolved: 0,
     medianHoursToResolve: null,
   };
@@ -40,6 +43,8 @@ export function impact(comments: readonly Row[]): Impact {
 
   for (const c of comments) {
     if (c.anchor && c.context.viewport && c.context.browser) out.withContext++;
+
+    if (c.context.qa) out.pageCheck++;
 
     const t = c.triage;
     if (t) {

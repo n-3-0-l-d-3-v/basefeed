@@ -235,6 +235,7 @@ function Card({
         {c.priority !== "medium" && <Badge tone={PRIORITY_TONE[c.priority]}>{c.priority}</Badge>}
         {c.category && <Badge>{c.category}</Badge>}
         {c.triage_state === "ready" && <Badge tone="ink">Needs your call</Badge>}
+            {c.context.qa && <Badge title="Found by the automated page check">Page check</Badge>}
             {c.client_review === "pending" && <Badge tone="info">Awaiting client</Badge>}
             {c.client_review === "approved" && <Badge tone="accent">Client confirmed</Badge>}
             {c.client_review === "rejected" && c.status !== "resolved" && <Badge tone="pink">Sent back</Badge>}

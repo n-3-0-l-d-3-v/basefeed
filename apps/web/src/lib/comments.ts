@@ -1,10 +1,10 @@
-import type { AnchorInput, Json, SnapshotInput, WidgetAttachment, WidgetComment, WidgetReply } from "@bn/shared";
+import type { AnchorInput, CommentContext, Json, SnapshotInput, WidgetAttachment, WidgetComment, WidgetReply } from "@bn/shared";
 import { supabaseAdmin } from "./supabase/server";
 
 type Admin = ReturnType<typeof supabaseAdmin>;
 
 export const WIDGET_COMMENT_COLUMNS =
-  "id, number, body, title, status, priority, author_name, author_user_id, author_guest_id, created_at, anchor, snapshot, anchor_state, change_summary, client_review" as const;
+  "id, number, body, title, status, priority, author_name, author_user_id, author_guest_id, created_at, anchor, snapshot, anchor_state, change_summary, client_review, context" as const;
 
 type Row = {
   id: string;
@@ -18,6 +18,7 @@ type Row = {
   author_guest_id: string | null;
   created_at: string;
   client_review: string | null;
+  context: Json;
   anchor: Json | null;
   snapshot: Json | null;
   anchor_state: string;
@@ -26,7 +27,7 @@ type Row = {
 
 /** `viewer` is the widget session's user or guest id; author ids themselves never leave the server. */
 export function toWidgetComment(
-  { author_user_id, author_guest_id, ...row }: Row,
+  { author_user_id, author_guest_id, context, ...row }: Row,
   replies: WidgetReply[],
   viewer: string,
   attachments: WidgetAttachment[] = [],
@@ -34,6 +35,7 @@ export function toWidgetComment(
   return {
     ...row,
     attachments,
+    qa: (context as Partial<CommentContext> | null)?.qa ?? null,
     mine: viewer === author_user_id || viewer === author_guest_id,
     client_review: row.client_review as WidgetComment["client_review"],
     anchor: row.anchor as unknown as AnchorInput | null,

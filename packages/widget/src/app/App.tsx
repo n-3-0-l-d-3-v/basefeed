@@ -1,11 +1,12 @@
 import { capture, DocIndex, pinPoint, takeSnapshot, type Anchor, type Snapshot } from "@bn/anchor";
-import type { CommentContext, Priority, Status, WidgetAttachment, WidgetComment, WidgetMe } from "@bn/shared";
+import { QA_RULES, type CommentContext, type Priority, type Status, type WidgetAttachment, type WidgetComment, type WidgetMe } from "@bn/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MountOptions } from "../loader";
 import { Api, ApiError } from "./api";
 import { describe, pageContext } from "./env";
 import { isTypingTarget, placeCard, usePicker, useViewportTick } from "./hooks";
-import { IconCheck, IconClip, IconClose, IconComment, IconExit, IconList } from "./icons";
+import { IconCheck, IconClip, IconClose, IconComment, IconExit, IconList, IconScan } from "./icons";
+import { audit, type Finding } from "./qa";
 import { captureScreenshot } from "./screenshot";
 import { Session } from "./session";
 import { ago } from "./time";
@@ -37,6 +38,9 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
   const [openId, setOpenId] = useState<string | null>(null);
   const [panel, setPanel] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Findings of the automated page check, while its panel is open; `spot` is the one being pointed at.
+  const [check, setCheck] = useState<Finding[] | null>(null);
+  const [spot, setSpot] = useState<Element | null>(null);
   // Member is choosing the element a changed/removed comment belongs to.
   const [repin, setRepin] = useState<WidgetComment | null>(null);
   const tracker = useMemo(() => new Tracker(setPlaced), []);
@@ -223,6 +227,31 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
     flash(failed ? `Comment #${comment.number} added, but ${failed} file${failed === 1 ? "" : "s"} couldn't be attached` : `Comment #${comment.number} added`);
   };
 
+  const runCheck = () => {
+    setOpenId(null);
+    setPanel(false);
+    setDraft(null);
+    setSpot(null);
+    setCheck(audit(document, { skip: (el) => el === host || host.contains(el) }));
+  };
+
+  /** File one finding as a comment pinned to its element, labelled by its rule. */
+  const fileFinding = async (f: Finding) => {
+    const r = f.el.getBoundingClientRect();
+    const anchor = capture(f.el, { x: r.left + r.width / 2, y: r.top + r.height / 2 }, new DocIndex(document));
+    const screenshot = await captureScreenshot(f.el, anchor.offset);
+    const { comment } = await api.create({
+      body: f.message,
+      priority: QA_RULES[f.rule].priority,
+      anchor,
+      snapshot: takeSnapshot(f.el),
+      context: { ...pageContext(f.el), qa: f.rule },
+      screenshot,
+    });
+    setComments((list) => [...list, comment]);
+    return comment;
+  };
+
   const attach = async (id: string, file: File) => {
     const { attachment } = await api.attach(id, file);
     setComments((list) => list.map((c) => (c.id === id ? { ...c, attachments: [...c.attachments, attachment] } : c)));
@@ -281,6 +310,7 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
   return (
     <>
       {hover && <Highlight el={hover} />}
+      {spot && check && <Highlight el={spot} />}
       {placed.map((p) => (
         <Pin key={p.comment.id} placed={p} active={p.comment.id === openId} onClick={() => setOpenId(p.comment.id === openId ? null : p.comment.id)} />
       ))}
@@ -311,6 +341,28 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
           onClose={() => setPanel(false)}
         />
       )}
+      {check && (
+        <PageCheck
+          findings={check}
+          placed={placed}
+          onSpot={(el) => {
+            setSpot(el);
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+          }}
+          onFile={async (f) => {
+            const c = await fileFinding(f);
+            session.toHost({ type: "bn:created", commentId: c.id });
+          }}
+          onFileAll={async (list) => {
+            for (const f of list) await fileFinding(f);
+            flash(`${list.length} ${list.length === 1 ? "problem" : "problems"} added as comments`);
+          }}
+          onClose={() => {
+            setCheck(null);
+            setSpot(null);
+          }}
+        />
+      )}
       <div class="bar ui" role="toolbar" aria-label="Feedback">
         {!opts.embedded && (
           <span class="brand" aria-hidden="true">
@@ -326,6 +378,12 @@ export function App({ opts, host, destroy }: { opts: MountOptions; host: Element
           <span class="count">{openCount}</span>
           <span>open</span>
         </button>
+        {me?.canModerate && (
+          <button aria-pressed={check !== null} onClick={() => (check ? setCheck(null) : runCheck())} title="Check this page for dead links, missing alt text, heading order, contrast and overflow">
+            <IconScan />
+            <span>Check page</span>
+          </button>
+        )}
         {!opts.embedded && (
           <>
             <span class="sep" />
@@ -756,6 +814,87 @@ function Panel({ placed, onPick, onClose }: { placed: Placed[]; onPick: (id: str
             );
           })}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Results of the automated page check. Each finding can be pointed at, and filed as a comment pinned
+ * to its element; ones already filed (and still open) show their number instead.
+ */
+function PageCheck({
+  findings,
+  placed,
+  onSpot,
+  onFile,
+  onFileAll,
+  onClose,
+}: {
+  findings: Finding[];
+  placed: Placed[];
+  onSpot: (el: Element) => void;
+  onFile: (f: Finding) => Promise<void>;
+  onFileAll: (list: Finding[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const filed = (f: Finding) => placed.find((p) => p.element === f.el && p.comment.qa === f.rule && p.comment.status !== "resolved")?.comment ?? null;
+  const fresh = findings.filter((f) => !filed(f));
+  const run = (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    fn()
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't add the comment."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div class="card panel ui" role="dialog" aria-label="Page check">
+      <header>
+        <span class="grow eyebrow">
+          Page check · {findings.length} {findings.length === 1 ? "problem" : "problems"}
+        </span>
+        <button class="x" onClick={onClose} aria-label="Close">
+          <IconClose />
+        </button>
+      </header>
+      {findings.length === 0 ? (
+        <div class="empty">Nothing found. Links, images, headings, contrast and page width all look fine at this screen size.</div>
+      ) : (
+        <ul class="list">
+          {findings.map((f, i) => {
+            const existing = filed(f);
+            return (
+              <li class="split" key={`${f.rule}${i}`}>
+                <button onClick={() => onSpot(f.el)}>
+                  <span class="line">
+                    <div class="t wrap">{QA_RULES[f.rule].title}</div>
+                    <div class="meta">{f.message}</div>
+                  </span>
+                </button>
+                {existing ? (
+                  <span class="filed">#{existing.number}</span>
+                ) : (
+                  <button class="btn" disabled={busy} aria-label={`Add as a comment: ${QA_RULES[f.rule].title}`} onClick={() => run(() => onFile(f))}>
+                    Add
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {error && <div class="err" style={{ margin: "0 14px 10px" }}>{error}</div>}
+      {fresh.length > 0 && (
+        <footer>
+          <span class="hint">Each becomes a comment pinned to its element</span>
+          <span class="spacer" />
+          <button class="btn primary" disabled={busy} onClick={() => run(() => onFileAll(fresh))}>
+            {busy ? "Adding…" : `Add all ${fresh.length}`}
+          </button>
+        </footer>
       )}
     </div>
   );

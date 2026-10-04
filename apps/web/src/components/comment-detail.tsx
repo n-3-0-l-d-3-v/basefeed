@@ -183,6 +183,7 @@ export function CommentDetail({
             {c.author_guest_id && <Badge tone="info">Client</Badge>}
             <span>· {ago(c.created_at)}</span>
             {c.category && <Badge>{c.category}</Badge>}
+            {c.context.qa && <Badge tone="ink">Page check</Badge>}
           </p>
         </div>
 

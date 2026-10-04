@@ -74,8 +74,9 @@ export default async function ImpactPage({ params }: { params: Promise<{ project
             )}
           </Card>
 
-          <Card title="Fixes noticed without re-checking" instead="reopening every comment after a publish to see whether it was done">
-            <dl className="grid grid-cols-2 gap-4">
+          <Card title="Fixes noticed without re-checking" instead="reopening every comment after a publish to see whether it was done, and proofing pages by eye">
+            <dl className="grid grid-cols-3 gap-4">
+              <Stat value={i.pageCheck} label="problems found by the page check" />
               <Stat value={i.fixesSpotted} label="commented elements seen to change afterwards" />
               <Stat value={i.pins.flagged} label="elements changed or removed, flagged rather than guessed" tone={i.pins.flagged ? "pink" : undefined} />
             </dl>
