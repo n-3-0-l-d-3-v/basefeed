@@ -191,6 +191,9 @@ function isCorrect(res: Resolution, s: { target: Element; clones: Set<Element>; 
   return indistinguishable(res.element, s.anchor, s.index) || s.clones.has(res.element);
 }
 
+// Random edit sequences per run of the "never the wrong element" property; raise it to search harder.
+const RUNS = Number(process.env.ANCHOR_RUNS ?? 3000);
+
 describe("anchoring properties", () => {
   // Async properties yield between runs so the test worker stays responsive on long runs.
   const tick = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -214,9 +217,20 @@ describe("anchoring properties", () => {
         const s = scenario(spec, pick, muts);
         expect(isCorrect(s.res, s)).toBe(true);
       }),
-      { numRuns: Number(process.env.ANCHOR_RUNS ?? 3000) },
+      { numRuns: RUNS },
     );
-  }, 180_000);
+  }, Math.max(180_000, RUNS * 60));
+
+  // Replay a counterexample printed by a failed run: ANCHOR_REPLAY='[[...spec], pick, [...mutations]]'.
+  it.runIf(process.env.ANCHOR_REPLAY)("replays a counterexample", () => {
+    const [spec, pick, muts] = JSON.parse(process.env.ANCHOR_REPLAY!) as [Spec[], number, Mut[]];
+    const s = scenario(spec, pick, muts);
+    console.info("[replay] target:", s.target.outerHTML);
+    console.info("[replay] page:", s.target.ownerDocument.body.innerHTML);
+    console.info("[replay] anchor:", JSON.stringify(s.anchor));
+    console.info("[replay] result:", s.res.status, s.res.status === "detached" ? "" : s.res.element.outerHTML);
+    expect(isCorrect(s.res, s)).toBe(true);
+  });
 
   it("keeps most comments attached through ordinary edits elsewhere on the page", async () => {
     const samples = fc.sample(

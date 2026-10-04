@@ -165,6 +165,24 @@ describe("resolve", () => {
     expect(r.status === "attached" && r.element === twin).toBe(false);
   });
 
+  it("does not attach to a new wrapper around a different element with the same text after the original was deleted", () => {
+    // Found by the property test in CI: the commented box is gone, and wrapping a span that says the
+    // same thing produces a box with the same content and the same text before it.
+    const doc = page(
+      "<div><div><p>Learn more</p><p>Learn more</p></div><div><a>We build Webflow sites for B2B tech</a></div><p>Learn more</p></div><p>Learn more</p><span>We build Webflow sites for B2B tech</span>",
+    );
+    const el = doc.querySelector("a")!.parentElement!;
+    const anchor = capture(el, undefined, new DocIndex(doc));
+    el.remove();
+    const span = doc.querySelector("span")!;
+    const wrapper = doc.createElement("div");
+    span.before(wrapper);
+    wrapper.append(span);
+    doc.body.insertAdjacentHTML("afterbegin", "<p>New intro</p>");
+    const r = resolve(anchor, new DocIndex(doc));
+    expect(r.status === "attached" && r.element === wrapper).toBe(false);
+  });
+
   it("detaches when nothing similar remains", () => {
     const doc = page(HERO);
     const { anchor } = anchorOn(doc, "h1");

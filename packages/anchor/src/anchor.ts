@@ -173,6 +173,10 @@ function eligible(a: Anchor, el: Element, sig: Signal[], idx: DocIndex, candidat
       if (bare && hasNestedLookalike(a, el, idx)) return sig.includes("path") && sig.includes("parent");
       return sig.includes("path") || sig.includes("parent");
     }
+    // A shell (a box whose whole text sits in one child) can be produced by wrapping any element
+    // that has the same text, and it inherits that element's surroundings. Matching text and
+    // neighbouring text therefore prove nothing here: only the exact structural slot does.
+    if (isShell(el, idx)) return sig.includes("path") && sig.includes("parent");
     // A close variant of the original still on the page (edited in place, or re-wrapped) means this
     // candidate may be a copy or a new wrapper: demand exact structural agreement.
     if (hasNearVariant(a, el, idx)) return sig.includes("path") && sig.includes("parent");
@@ -189,6 +193,12 @@ function eligible(a: Anchor, el: Element, sig: Signal[], idx: DocIndex, candidat
 }
 
 const NEAR_VARIANT = 0.7;
+
+/** A leaf that is only a shell around one child element holding all of its text. */
+function isShell(el: Element, idx: DocIndex): boolean {
+  const text = idx.text(el);
+  return text !== "" && Array.from(el.children).some((c) => idx.has(c) && idx.text(c) === text);
+}
 
 /** A same-tag element around or inside this one that also carries the anchor's content: a wrapper and what it wraps. */
 function hasNestedLookalike(a: Anchor, el: Element, idx: DocIndex): boolean {
