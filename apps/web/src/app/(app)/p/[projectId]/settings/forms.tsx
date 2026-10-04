@@ -4,7 +4,8 @@ import { Ago } from "@/components/ago";
 import { useState, useTransition } from "react";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
 import { WEBHOOK_EVENTS } from "@/lib/webhook-events";
-import { createShareLink, createWebhook, deleteWebhook, revokeShareLink, setOrigins, testWebhook, updateProject } from "../../../actions";
+import { ASSIGN_CATEGORIES } from "@/lib/assign-categories";
+import { createShareLink, createWebhook, deleteWebhook, revokeShareLink, setAssignRule, setOrigins, testWebhook, updateProject } from "../../../actions";
 
 function Status({ error, saved }: { error: string | null; saved: boolean }) {
   if (error)
@@ -207,6 +208,50 @@ export function ProjectForm({ projectId, name, figmaUrl }: { projectId: string; 
         <Status error={error} saved={saved} />
       </div>
     </form>
+  );
+}
+
+export function AssignRules({ projectId, members, rules }: { projectId: string; members: { id: string; name: string }[]; rules: { category: string; assignee_id: string }[] }) {
+  const [chosen, setChosen] = useState<Record<string, string>>(() => Object.fromEntries(rules.map((r) => [r.category, r.assignee_id])));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [pending, start] = useTransition();
+  const change = (category: string, assigneeId: string) => {
+    const before = chosen[category] ?? "";
+    setChosen((c) => ({ ...c, [category]: assigneeId }));
+    setSaved(false);
+    start(async () => {
+      const r = await setAssignRule(projectId, category, assigneeId || null);
+      if (!r.ok) {
+        setChosen((c) => ({ ...c, [category]: before }));
+        return setError(r.error);
+      }
+      setError(null);
+      setSaved(true);
+    });
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <ul className="divide-y divide-line overflow-hidden rounded-lg ring-1 ring-line">
+        {Object.entries(ASSIGN_CATEGORIES).map(([id, c]) => (
+          <li key={id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2.5 text-[13px]">
+            <label htmlFor={`rule-${id}`} className="min-w-0 flex-1">
+              <span className="block font-medium">{c.label}</span>
+              <span className="block text-[12px] text-muted">{c.hint}</span>
+            </label>
+            <Select id={`rule-${id}`} className="w-44" disabled={pending} value={chosen[id] ?? ""} onChange={(e) => change(id, e.target.value)}>
+              <option value="">Nobody</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </Select>
+          </li>
+        ))}
+      </ul>
+      <Status error={error} saved={saved} />
+    </div>
   );
 }
 

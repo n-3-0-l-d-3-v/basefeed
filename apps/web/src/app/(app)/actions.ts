@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { ASSIGN_CATEGORIES } from "@/lib/assign-categories";
 import { COMMENT_COLUMNS, getSession, type DashboardComment } from "@/lib/data";
 import { env } from "@/lib/env";
 import { drainJobs, enqueueTriage } from "@/lib/jobs";
@@ -18,6 +19,7 @@ export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: 
 const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 const fail = (error: string): Result<never> => ({ ok: false, error });
 const Id = z.uuid();
+
 
 async function projectFor(projectId: string) {
   const { supabase, user, profile } = await getSession();
@@ -186,6 +188,27 @@ export async function createShareLink(projectId: string, label: string, days: nu
   if (error) return fail("Couldn't create the link.");
   revalidatePath(`/p/${projectId}/settings`);
   return ok({ url: `${env().APP_URL}/s/${token}` });
+}
+
+// ---------------------------------------------------------------- assignment rules
+
+/** "Comments of this category go to this person." Passing no assignee removes the rule. */
+export async function setAssignRule(projectId: string, category: string, assigneeId: string | null): Promise<Result> {
+  const ctx = await projectFor(projectId);
+  if (!ctx) return fail("Project not found.");
+  if (!(category in ASSIGN_CATEGORIES)) return fail("Unknown category.");
+  if (!assigneeId) {
+    const { error } = await ctx.supabase.from("assign_rules").delete().eq("project_id", projectId).eq("category", category);
+    if (error) return fail("Couldn't remove the rule.");
+  } else {
+    if (!Id.safeParse(assigneeId).success) return fail("Choose a team member.");
+    const { data: member } = await ctx.supabase.from("workspace_members").select("user_id").eq("workspace_id", ctx.project.workspace_id).eq("user_id", assigneeId).maybeSingle();
+    if (!member) return fail("That person is not in this workspace.");
+    const { error } = await ctx.supabase.from("assign_rules").upsert({ project_id: projectId, category, assignee_id: assigneeId }, { onConflict: "project_id,category" });
+    if (error) return fail("Couldn't save the rule.");
+  }
+  revalidatePath(`/p/${projectId}/settings`);
+  return ok(undefined);
 }
 
 // ---------------------------------------------------------------- webhooks

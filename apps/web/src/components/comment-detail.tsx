@@ -36,7 +36,7 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   "comment.created": () => "left the comment",
   "comment.status": (m) => `moved it from ${String(m.from).replace("_", " ")} to ${String(m.to).replace("_", " ")}`,
   "comment.priority": (m) => `changed priority from ${m.from} to ${m.to}`,
-  "comment.assignee": (m) => (m.to ? "reassigned it" : "unassigned it"),
+  "comment.assignee": (m) => (m.rule ? `assigned it, because it is labelled ${m.rule}` : m.to ? "reassigned it" : "unassigned it"),
   "comment.repinned": () => "moved the pin to the right element",
   "triage.accepted": () => "applied the AI labels",
   "triage.dismissed": () => "dismissed the AI flag",

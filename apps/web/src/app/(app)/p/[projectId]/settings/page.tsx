@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { InstallSnippet } from "@/components/install-snippet";
-import { getProject, getSession } from "@/lib/data";
+import { getMembers, getProject, getSession } from "@/lib/data";
 import { env } from "@/lib/env";
-import { OriginsForm, ProjectForm, ShareLinks, Webhooks } from "./forms";
+import { AssignRules, OriginsForm, ProjectForm, ShareLinks, Webhooks } from "./forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -33,6 +33,12 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     .select("id, url, secret, events, last_status, last_error, last_delivered_at")
     .eq("project_id", projectId)
     .order("created_at");
+
+  // The section is left out on a database that does not have the rules table yet.
+  const [{ data: rules, error: noRules }, members] = await Promise.all([
+    supabase.from("assign_rules").select("category, assignee_id").eq("project_id", projectId),
+    getMembers(project.workspace_id),
+  ]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-3 pb-16 pt-1">
@@ -67,6 +73,14 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       >
         <ShareLinks projectId={project.id} links={links ?? []} />
       </Section>
+      {!noRules && (
+        <Section
+          title="Assignment rules"
+          description="Send each kind of comment to the right person. A rule applies the moment a comment is labelled, by AI triage, the page check or a person. It only fills an empty assignee: it never overrides someone's choice."
+        >
+          <AssignRules projectId={project.id} members={members.map((m) => ({ id: m.id, name: m.name }))} rules={rules ?? []} />
+        </Section>
+      )}
       <Section
         title="Webhooks"
         description="Send what happens here to Slack, n8n, Zapier or your own service: new comments, status changes, AI flags, client sign-off. Each delivery is signed and retried."
