@@ -170,13 +170,13 @@ isOneToOne: false
                   ]
                 },"notification_prefs": {
                   Row: {
-                    "assignments": boolean,"daily_digest": boolean,"new_comments": boolean,"replies": boolean,"updated_at": string,"user_id": string
+                    "assignments": boolean,"daily_digest": boolean,"digest_since": string | null,"new_comments": boolean,"replies": boolean,"timezone": string,"updated_at": string,"user_id": string
                   }
                   Insert: {
-                    "assignments"?: boolean,"daily_digest"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id": string
+                    "assignments"?: boolean,"daily_digest"?: boolean,"digest_since"?: string | null,"new_comments"?: boolean,"replies"?: boolean,"timezone"?: string,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "assignments"?: boolean,"daily_digest"?: boolean,"new_comments"?: boolean,"replies"?: boolean,"updated_at"?: string,"user_id"?: string
+                    "assignments"?: boolean,"daily_digest"?: boolean,"digest_since"?: string | null,"new_comments"?: boolean,"replies"?: boolean,"timezone"?: string,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     
@@ -215,13 +215,13 @@ isOneToOne: false
                   ]
                 },"projects": {
                   Row: {
-                    "allowed_origins": (string)[],"archived_at": string | null,"comment_seq": number,"created_at": string,"created_by": string | null,"figma_url": string | null,"id": string,"name": string,"public_key": string,"site_url": string | null,"updated_at": string,"workspace_id": string
+                    "allowed_origins": (string)[],"archived_at": string | null,"comment_seq": number,"created_at": string,"created_by": string | null,"figma_url": string | null,"id": string,"name": string,"public_key": string,"reminder_days": number | null,"site_url": string | null,"updated_at": string,"workspace_id": string
                   }
                   Insert: {
-                    "allowed_origins"?: (string)[],"archived_at"?: string | null,"comment_seq"?: number,"created_at"?: string,"created_by"?: string | null,"figma_url"?: string | null,"id"?: string,"name": string,"public_key"?: string,"site_url"?: string | null,"updated_at"?: string,"workspace_id": string
+                    "allowed_origins"?: (string)[],"archived_at"?: string | null,"comment_seq"?: number,"created_at"?: string,"created_by"?: string | null,"figma_url"?: string | null,"id"?: string,"name": string,"public_key"?: string,"reminder_days"?: number | null,"site_url"?: string | null,"updated_at"?: string,"workspace_id": string
                   }
                   Update: {
-                    "allowed_origins"?: (string)[],"archived_at"?: string | null,"comment_seq"?: number,"created_at"?: string,"created_by"?: string | null,"figma_url"?: string | null,"id"?: string,"name"?: string,"public_key"?: string,"site_url"?: string | null,"updated_at"?: string,"workspace_id"?: string
+                    "allowed_origins"?: (string)[],"archived_at"?: string | null,"comment_seq"?: number,"created_at"?: string,"created_by"?: string | null,"figma_url"?: string | null,"id"?: string,"name"?: string,"public_key"?: string,"reminder_days"?: number | null,"site_url"?: string | null,"updated_at"?: string,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -416,7 +416,7 @@ isOneToOne: false
 { Args: { "ws": string }; Returns: boolean
                            },
 "queue_daily_digests":
-{ Args: Record<PropertyKey, never>; Returns: number
+{ Args: { "p_now"?: string }; Returns: number
                            },
 "queue_review_reminders":
 { Args: { "p_after"?: string }; Returns: number

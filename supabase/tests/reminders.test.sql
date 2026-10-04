@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(11);
 
 select is((select count(*)::int from cron.job where jobname = 'review-reminders' and schedule = '35 3 * * *'), 1, 'reminders are checked once a day');
 
@@ -67,6 +67,16 @@ select results_eq(
   $$ select payload ->> 'guest_id' from pg_temp.mine() $$,
   $$ values ('40000000-0000-0000-0000-0000000000e2') $$,
   'confirmed comments are not reminded about');
+
+-- The delay is the project's choice, and a project can switch reminders off.
+delete from public.jobs where id in (select id from pg_temp.mine());
+delete from public.activity where action = 'client.reminded' and project_id = '10000000-0000-0000-0000-0000000000e1';
+update public.projects set reminder_days = 7 where id = '10000000-0000-0000-0000-0000000000e1';
+do $$ begin perform public.queue_review_reminders(); end $$;
+select is((select count(*)::int from pg_temp.mine()), 0, 'a project that waits seven days does not remind after three');
+update public.projects set reminder_days = null where id = '10000000-0000-0000-0000-0000000000e1';
+do $$ begin perform public.queue_review_reminders(interval '0 seconds'); end $$;
+select is((select count(*)::int from pg_temp.mine()), 0, 'a project with reminders off never reminds');
 
 set local role authenticated;
 select throws_ok($$ select public.queue_review_reminders() $$, '42501', null, 'signed-in users cannot trigger reminders');
