@@ -228,7 +228,8 @@ describe("anchoring properties", () => {
     console.info("[replay] target:", s.target.outerHTML);
     console.info("[replay] page:", s.target.ownerDocument.body.innerHTML);
     console.info("[replay] anchor:", JSON.stringify(s.anchor));
-    console.info("[replay] result:", s.res.status, s.res.status === "detached" ? "" : s.res.element.outerHTML);
+    console.info("[replay] result:", s.res.status, s.res.status === "detached" ? "" : `${s.res.element.outerHTML} at ${s.index.path(s.res.element)}`, s.res.status === "attached" ? s.res.signals.join("+") : "");
+    console.info("[replay] target now at:", s.target.isConnected ? s.index.path(s.target) : "(removed)");
     expect(isCorrect(s.res, s)).toBe(true);
   });
 

@@ -183,6 +183,20 @@ describe("resolve", () => {
     expect(r.status === "attached" && r.element === wrapper).toBe(false);
   });
 
+  it("does not attach to a twin outside the card when the original is moved away and the card's parent now reads the same", () => {
+    // Found by the property test in CI: with the original gone, "Learn more" + the rest of the card
+    // is exactly the text of the card's parent, so the parent passed for the card.
+    const more = "<p>Learn more</p>";
+    const doc = page(`${more.repeat(8)}<div>${more}<div>${more}<p>Turn your website into your best salesperson</p></div></div>${more.repeat(8)}`);
+    const el = doc.querySelector("div > div > p")!;
+    const anchor = capture(el, undefined, new DocIndex(doc));
+    expect(anchor.scope).not.toBeNull();
+    const twin = doc.querySelector("body > div > p")!;
+    doc.body.append(el);
+    const r = resolve(anchor, new DocIndex(doc));
+    expect(r.status === "attached" && r.element === twin).toBe(false);
+  });
+
   it("detaches when nothing similar remains", () => {
     const doc = page(HERO);
     const { anchor } = anchorOn(doc, "h1");

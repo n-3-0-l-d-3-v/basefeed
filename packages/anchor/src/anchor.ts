@@ -143,7 +143,10 @@ function resolveScope(a: Anchor, idx: DocIndex): Element | null {
   const near = (prefix.trim() && tailMatch(idx.prefix(scope), prefix)) || (suffix.trim() && headMatch(idx.suffix(scope), suffix));
   if (!near) return null;
   const el = idx.followRelPath(scope, rel);
-  return el && idx.key(el) === a.key ? el : null;
+  if (!el || idx.key(el) !== a.key) return null;
+  // When the element is moved out, a twin just outside the container can make the container's parent
+  // read exactly like the old container. The element's own siblings give that away.
+  return idx.parentSig(el) === a.parentSig ? el : null;
 }
 
 function signalsFor(el: Element, a: Anchor, idx: DocIndex): Signal[] {
