@@ -60,7 +60,7 @@ Exact duplicates in identical positions are genuinely indistinguishable, and the
 
 ## Automation
 
-One feedback round as a pipeline. Every arrow used to be a person; the two diamonds are the only
+One feedback round as a pipeline. Every arrow used to be a person; the diamonds are the only
 places a person still decides.
 
 ```mermaid
