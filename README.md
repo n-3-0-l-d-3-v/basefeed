@@ -64,6 +64,7 @@ flowchart LR
 ```
 
 - **AI triage that stays quiet.** A clear comment gets a short title and a category, nothing more. It speaks up only for: a comment too vague to act on (one click sends the clarifying question to the author), a duplicate of an older comment, a priority that is clearly wrong, and requests that are new work rather than a tweak. When the author dictates wording ("should say Book a demo") the exact replacement is extracted, ready to paste.
+- **Assignment rules.** Per project: copy goes to the writer, bugs to the developer. The rule applies the moment a comment is labelled (by triage, the page check or a person), is recorded in the comment's history as a rule, and only ever fills an empty assignee.
 - **Page check.** One click inspects the live page for dead links, missing alt text, empty or out-of-order headings, duplicate IDs, placeholder text, broken images, horizontal overflow and low contrast, and files each finding as a comment pinned to the element. Plain DOM inspection: no AI, same page in, same findings out.
 
 ### 3. Close
@@ -168,7 +169,7 @@ sequenceDiagram
 - **AI for intent, code for execution.** AI labels a comment and flags what needs a person. Anything a client would notice (a question sent to them, a changed priority, closing a duplicate) happens only on a human's click. Anchoring, change detection, the page check, permissions and logging are deterministic code.
 - **Never silently wrong.** An uncertain pin is shown as "element changed" or "removed"; it is not moved to a guess.
 - **The database enforces isolation.** Row-level security on every table; the dashboard queries as the signed-in user, so an application bug cannot leak another workspace's data. Privileged paths (widget, API tokens) use the service role and scope every query to what the caller can reach; pgTAP tests assert it.
-- **Nothing important depends on a code path remembering.** Numbering, the activity log, notifications, webhooks and the client sign-off state are database triggers.
+- **Nothing important depends on a code path remembering.** Numbering, the activity log, notifications, webhooks, assignment rules and the client sign-off state are database triggers.
 - **Degrade, don't fail.** If the AI provider is down, out of quota or not configured, comments work exactly the same. Background work retries with backoff; a client-side upload failure never costs the client their comment.
 
 ### Data model
@@ -181,6 +182,7 @@ erDiagram
   projects ||--o{ share_links : "client access"
   projects ||--o{ guests : "clients, by email"
   projects ||--o{ webhooks : announces
+  projects ||--o{ assign_rules : "category to person"
   pages ||--o{ comments : on
   comments ||--o{ replies : thread
   comments ||--o{ attachments : files
@@ -322,13 +324,13 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-141 automated tests, plus type checks and lint, on every push.
+153 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 25 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
-| Database | 63 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests |
-| End to end | 18 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, attachments, share links, sign-off by emailed link, the daily digest, invites, REST and MCP, webhooks, API security |
+| Database | 74 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules |
+| End to end | 19 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the daily digest, invites, REST and MCP, webhooks, API security |
 | Web | 12 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
 | Compiler | 14 | `pnpm --filter @bn/compiler test` | Reuse before creation, idempotency, deltas, naming validation, 300 random pages per run |
