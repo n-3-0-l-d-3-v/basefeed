@@ -21,7 +21,7 @@ import { needsAttention, useLiveComments } from "@/components/use-live-comments"
 import type { DashboardComment, Member } from "@/lib/data";
 import { commentsToMarkdown } from "@/lib/export";
 import { pathOf } from "@/lib/urls";
-import { updateComment } from "../../../actions";
+import { updateComment, updateComments } from "../../../actions";
 
 type Status = DashboardComment["status"];
 const COLUMNS: Status[] = ["open", "in_progress", "resolved"];
@@ -47,6 +47,8 @@ export function Board({
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const urlOf = (c: DashboardComment) => pages.find((p) => p.id === c.page_id)?.url ?? "";
@@ -78,6 +80,29 @@ export function Board({
       patch(id, { status: c.status });
       setError(r.error);
     }
+  };
+
+  const toggle = (id: string) =>
+    setPicked((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  /** One change for every selected card: shown at once, undone if the server refuses. */
+  const bulk = async (change: { status?: Status; assignee_id?: string | null }) => {
+    const ids = [...picked];
+    const before = new Map(comments.filter((c) => picked.has(c.id)).map((c) => [c.id, { status: c.status, assignee_id: c.assignee_id }]));
+    setBulkBusy(true);
+    setError(null);
+    for (const id of ids) patch(id, change);
+    const r = await updateComments(projectId, ids, change);
+    setBulkBusy(false);
+    if (!r.ok) {
+      for (const [id, was] of before) patch(id, was);
+      return setError(r.error);
+    }
+    setPicked(new Set());
   };
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -148,13 +173,38 @@ export function Board({
           {error}
         </p>
       )}
+      {picked.size > 0 && (
+        <div role="toolbar" aria-label="Selected comments" className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-night px-3 py-2 text-[13px] text-white">
+          <span className="font-medium">{picked.size} selected</span>
+          <Select aria-label="Move selected to" className="w-40" disabled={bulkBusy} value="" onChange={(e) => e.target.value && void bulk({ status: e.target.value as Status })}>
+            <option value="">Move to…</option>
+            {COLUMNS.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Assign selected to" className="w-44" disabled={bulkBusy} value="" onChange={(e) => e.target.value && void bulk({ assignee_id: e.target.value === "none" ? null : e.target.value })}>
+            <option value="">Assign to…</option>
+            <option value="none">Nobody</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </Select>
+          <button type="button" className="ml-auto text-[12px] text-white/65 hover:text-white" onClick={() => setPicked(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
 
       <DndContext id="board" sensors={sensors} onDragEnd={onDragEnd} accessibility={{ screenReaderInstructions: { draggable: "Press space to pick up a card, arrow keys to move it, space to drop it in a column." } }}>
         <div className="mt-3 grid min-h-0 flex-1 gap-3 overflow-x-auto md:grid-cols-3">
           {COLUMNS.map((s) => (
             <Column key={s} status={s} count={byColumn[s].length}>
               {byColumn[s].map((c) => (
-                <Card key={c.id} c={c} pagePath={pathOf(urlOf(c))} assignee={members.find((m) => m.id === c.assignee_id)?.name} onOpen={() => setOpenId(c.id)} onMove={move} />
+                <Card key={c.id} c={c} pagePath={pathOf(urlOf(c))} assignee={members.find((m) => m.id === c.assignee_id)?.name} onOpen={() => setOpenId(c.id)} onMove={move} picked={picked.has(c.id)} onPick={() => toggle(c.id)} />
               ))}
             </Column>
           ))}
@@ -209,12 +259,16 @@ function Card({
   assignee,
   onOpen,
   onMove,
+  picked,
+  onPick,
 }: {
   c: DashboardComment;
   pagePath: string;
   assignee?: string;
   onOpen: () => void;
   onMove: (id: string, s: Status) => void;
+  picked: boolean;
+  onPick: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: c.id });
   const pinState = c.status === "resolved" ? "resolved" : c.anchor_state === "detached" || c.anchor_state === "suggested" ? "changed" : "open";
@@ -222,7 +276,7 @@ function Card({
     <article
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform) }}
-      className={cx("group rounded-xl bg-panel p-3 ring-1 ring-line transition-shadow hover:shadow-[var(--shadow-soft)]", isDragging && "z-10 rotate-[1deg] shadow-[var(--shadow-pop)]")}
+      className={cx("group rounded-xl bg-panel p-3 ring-1 transition-shadow hover:shadow-[var(--shadow-soft)]", picked ? "ring-2 ring-ink" : "ring-line", isDragging && "z-10 rotate-[1deg] shadow-[var(--shadow-pop)]")}
     >
       <div className="flex items-start gap-2.5">
         <Pin number={c.number} state={pinState} />
@@ -230,6 +284,13 @@ function Card({
           <span className="block truncate font-mono text-[10px] text-muted">{pagePath}</span>
           <span className="mt-0.5 line-clamp-3 block text-[14px] leading-snug">{c.title ?? c.body}</span>
         </button>
+        <input
+          type="checkbox"
+          checked={picked}
+          onChange={onPick}
+          aria-label={`Select comment ${c.number}`}
+          className={cx("mt-1 size-4 accent-[#0a0a0a] transition-opacity focus-visible:opacity-100 group-hover:opacity-100", picked ? "opacity-100" : "opacity-0")}
+        />
         <button
           type="button"
           {...listeners}

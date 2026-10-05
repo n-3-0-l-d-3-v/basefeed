@@ -283,6 +283,19 @@ const Patch = z
   })
   .partial();
 
+/** The same change to several comments of one project at once (from the board). */
+export async function updateComments(projectId: string, commentIds: string[], patch: { status?: z.input<typeof StatusSchema>; assignee_id?: string | null }): Promise<Result<{ updated: string[] }>> {
+  const ctx = await projectFor(projectId);
+  if (!ctx) return fail("Project not found.");
+  const ids = z.array(z.uuid()).min(1).max(100).safeParse(commentIds);
+  const parsed = z.object({ status: StatusSchema, assignee_id: z.uuid().nullable() }).partial().safeParse(patch);
+  if (!ids.success || !parsed.success || Object.keys(parsed.data).length === 0) return fail("Invalid change.");
+  const { data, error } = await ctx.supabase.from("comments").update(parsed.data).in("id", ids.data).eq("project_id", projectId).select("id");
+  if (error) return fail("Couldn't update the comments.");
+  after(() => drainJobs());
+  return ok({ updated: (data ?? []).map((r) => r.id) });
+}
+
 export async function updateComment(commentId: string, patch: z.input<typeof Patch>): Promise<Result> {
   const { supabase } = await getSession();
   const parsed = Patch.safeParse(patch);
