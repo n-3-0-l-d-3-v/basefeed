@@ -303,6 +303,8 @@ export type TriageDecision = "ask" | "duplicate" | "priority" | "noted" | "dismi
 export async function decideTriage(
   commentId: string,
   decision: TriageDecision,
+  /** For "ask": the question as the team member edited it. The AI's draft is used when this is empty. */
+  question?: string,
 ): Promise<Result<{ patch: Partial<DashboardComment>; reply: { id: string; author_name: string; body: string; created_at: string } | null }>> {
   const { supabase, user, profile } = await getSession();
   if (!Id.safeParse(commentId).success) return fail("Comment not found.");
@@ -314,8 +316,9 @@ export async function decideTriage(
   let text: string | null = null;
   let patch: Partial<DashboardComment> = { triage_state: "accepted" };
   if (decision === "ask") {
-    if (!t.clarificationQuestion) return fail("There is no question to ask.");
-    text = t.clarificationQuestion;
+    const edited = typeof question === "string" ? question.trim().slice(0, 600) : "";
+    if (!edited && !t.clarificationQuestion) return fail("There is no question to ask.");
+    text = edited || t.clarificationQuestion;
   } else if (decision === "duplicate") {
     if (!t.duplicateOf) return fail("No duplicate was found.");
     text = `Same request as #${t.duplicateOf}, so we're tracking it there.`;

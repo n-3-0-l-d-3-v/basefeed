@@ -255,9 +255,9 @@ export function CommentDetail({
         <TriageCard
           comment={c}
           busy={pending}
-          onDecide={(decision) =>
+          onDecide={(decision, question) =>
             start(async () => {
-              const r = await decideTriage(c.id, decision);
+              const r = await decideTriage(c.id, decision, question);
               if (!r.ok) return setError(r.error);
               onPatch(c.id, r.data.patch);
               const sent = r.data.reply;
@@ -547,11 +547,13 @@ function TriageCard({
 }: {
   comment: DashboardComment;
   busy: boolean;
-  onDecide: (d: TriageDecision) => void;
+  onDecide: (d: TriageDecision, question?: string) => void;
   onRetry: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const t = c.triage;
+  // The AI drafts the question; the person sending it has the last word on the wording.
+  const [question, setQuestion] = useState(t?.clarificationQuestion ?? "");
   if (c.triage_state === "pending")
     return (
       <p className="flex animate-pulse items-center gap-1.5 text-[12px] text-muted" aria-live="polite">
@@ -596,11 +598,28 @@ function TriageCard({
               const v = INSIGHT[i.kind](i as never, author);
               return (
                 <li key={i.kind} className="flex items-start justify-between gap-3">
-                  <span className="min-w-0">
+                  <span className="min-w-0 flex-1">
                     <span className="block text-[14px] font-medium leading-snug">{v.title}</span>
-                    {v.detail && <span className="mt-0.5 block text-[13px] leading-relaxed text-white/70">{v.detail}</span>}
+                    {i.kind === "clarify" ? (
+                      <textarea
+                        aria-label={`Question to send to ${author}`}
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        rows={3}
+                        maxLength={600}
+                        className="mt-1.5 block w-full resize-y rounded-lg border border-white/15 bg-white/5 px-2.5 py-2 text-[13px] leading-relaxed text-white placeholder:text-white/40 focus:border-accent focus:outline-none"
+                      />
+                    ) : (
+                      v.detail && <span className="mt-0.5 block text-[13px] leading-relaxed text-white/70">{v.detail}</span>
+                    )}
                   </span>
-                  <Button size="sm" variant="primary" disabled={busy} onClick={() => onDecide(v.decision)} className="shrink-0">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={busy || (i.kind === "clarify" && !question.trim())}
+                    onClick={() => onDecide(v.decision, i.kind === "clarify" ? question : undefined)}
+                    className="shrink-0"
+                  >
                     {v.action}
                   </Button>
                 </li>
