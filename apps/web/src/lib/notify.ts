@@ -242,6 +242,78 @@ ${sections
   await deliver([{ email: profile.email, name: profile.name || profile.email, kind: "member" }], `Weekly summary: ${summary}`, () => ({ html, text: `${text}\n` }));
 }
 
+/**
+ * Ask a client to confirm a fix. When the team resolves several of one client's comments in a row
+ * (a batch on the board, or one after another), the client gets one email listing them all, not one
+ * each: the first job to run covers every comment of theirs that is waiting and has not been asked
+ * about yet, records that in each comment's history, and the jobs for the others then find nothing to do.
+ */
+async function handleReviewRequest(commentId: string): Promise<void> {
+  const admin = supabaseAdmin();
+  const c = await loadComment(commentId);
+  if (!c?.author_guest_id) return;
+  const { data: guest } = await admin.from("guests").select("id, email, name").eq("id", c.author_guest_id).maybeSingle();
+  if (!guest) return;
+
+  const { data: pending } = await admin
+    .from("comments")
+    .select("id, number, body, project_id, resolved_at, page:pages(url, title)")
+    .eq("project_id", c.project_id)
+    .eq("author_guest_id", guest.id)
+    .eq("status", "resolved")
+    .eq("client_review", "pending")
+    .order("number");
+  const rows = (pending ?? []) as unknown as { id: string; number: number; body: string; project_id: string; resolved_at: string | null; page: { url: string; title: string | null } }[];
+  if (rows.length === 0) return; // answered, or reopened, before this ran
+  const { data: asked } = await admin.from("activity").select("comment_id, created_at").eq("action", "client.asked").in("comment_id", rows.map((r) => r.id));
+  const alreadyAsked = (r: (typeof rows)[number]) => (asked ?? []).some((a) => a.comment_id === r.id && (!r.resolved_at || Date.parse(a.created_at) >= Date.parse(r.resolved_at)));
+  const due = rows.filter((r) => !alreadyAsked(r));
+  if (due.length === 0) return;
+
+  // Recorded before sending: a second job starting now sees these as handled.
+  await admin.from("activity").insert(due.map((r) => ({ project_id: r.project_id, comment_id: r.id, actor_user_id: null, actor_name: "Automation", action: "client.asked" })));
+
+  const status = await statusLink(c.project_id, guest.id);
+  const to: Recipient[] = [{ email: guest.email, name: guest.name, kind: "guest" }];
+  if (due.length === 1) {
+    const only = due[0]!;
+    const url = await clientLink(only, guest);
+    await deliver(to, `Done on ${c.project.name}: does this look right?`, () =>
+      layout({
+        eyebrow: `${c.project.name} · ready for you to check`,
+        heading: "We've made this change. Does it look right?",
+        quote: clip(only.body, 600),
+        meta: "Open the page and choose Looks good or Not yet on your comment.",
+        cta: { label: "Check it on the page", url },
+        also: status ? { label: ALL_YOURS, url: status } : null,
+      }),
+    );
+    return;
+  }
+
+  const lines: { label: string; url: string }[] = [];
+  for (const r of due) lines.push({ label: `#${r.number} ${clip(r.body, 110)}`, url: await clientLink(r, guest) });
+  const heading = `We've made ${due.length} changes. Do they look right?`;
+  const html = `${SHELL_OPEN}
+<tr><td style="padding:20px 28px 0"><div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6b665e">${esc(c.project.name)} · ready for you to check</div>
+<h1 style="margin:8px 0 0;font-size:20px;font-weight:500;letter-spacing:-0.02em;line-height:1.3">${esc(heading)}</h1>
+<div style="margin-top:8px;font-size:14px;line-height:1.5;color:#6b665e">Open each one and choose Looks good or Not yet on your comment.</div></td></tr>
+<tr><td style="padding:12px 28px 0">${lines
+    .map((l) => `<div style="margin-top:8px;border-left:3px solid #ffacca;background:#fff0f5;border-radius:8px;padding:9px 12px;font-size:14px;line-height:1.45">${esc(l.label)}<div style="margin-top:4px"><a href="${esc(l.url)}" style="color:#0a0a0a;font-weight:500">Check it on the page</a></div></div>`)
+    .join("")}</td></tr>
+<tr><td style="padding:22px 28px 28px">${status ? `<a href="${esc(status)}" style="display:inline-block;background:#96ff7c;color:#0a0a0a;text-decoration:none;font-weight:500;font-size:14px;padding:11px 18px;border-radius:10px">See them all</a>` : ""}</td></tr>
+</table>
+<div style="max-width:520px;padding:14px 8px;font-size:12px;color:#6b665e">You are getting this because you left feedback on this site.</div>
+</td></tr></table></body></html>`;
+  const text = [
+    `${c.project.name}: ${heading}`,
+    "Open each one and choose Looks good or Not yet on your comment.",
+    lines.map((l) => `- ${l.label}\n  Check it on the page: ${l.url}`).join("\n"),
+    ...(status ? [`${ALL_YOURS}: ${status}`] : []),
+  ].join("\n\n");
+  await deliver(to, `Done on ${c.project.name}: ${due.length} changes for you to check`, () => ({ html, text: `${text}\n` }));
+}
+
 /** One email to a client listing everything of theirs still waiting for a Looks good / Not yet. */
 async function handleReminder(projectId: string, guestId: string): Promise<void> {
   const admin = supabaseAdmin();
@@ -338,25 +410,7 @@ export async function handleNotify(p: Payload): Promise<void> {
     return;
   }
 
-  if (p.event === "review.requested") {
-    const c = await loadComment(p.comment_id);
-    if (!c?.author_guest_id) return;
-    const { data: guest } = await admin.from("guests").select("id, email, name").eq("id", c.author_guest_id).maybeSingle();
-    if (!guest) return;
-    const url = await clientLink(c, guest);
-    const status = await statusLink(c.project_id, guest.id);
-    await deliver([{ email: guest.email, name: guest.name, kind: "guest" }], `Done on ${c.project.name}: does this look right?`, () =>
-      layout({
-        eyebrow: `${c.project.name} · ready for you to check`,
-        heading: "We've made this change. Does it look right?",
-        quote: clip(c.body, 600),
-        meta: "Open the page and choose Looks good or Not yet on your comment.",
-        cta: { label: "Check it on the page", url },
-        also: status ? { label: ALL_YOURS, url: status } : null,
-      }),
-    );
-    return;
-  }
+  if (p.event === "review.requested") return handleReviewRequest(p.comment_id);
 
   if (p.event === "review.rejected") {
     const c = await loadComment(p.comment_id);
