@@ -637,6 +637,53 @@ test.describe("team", () => {
   });
 });
 
+test.describe("weekly summary", () => {
+  test("a member who asked gets one email on Monday morning with each project's numbers", async ({ page, request }) => {
+    await login(page);
+    await page.goto("/account");
+    const weekly = page.getByRole("switch", { name: /Weekly summary/ });
+    const toggle = async () => {
+      const saved = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/account"));
+      await page.getByText("Weekly summary", { exact: true }).click();
+      await saved;
+    };
+    await toggle();
+    await page.reload();
+    await expect(weekly).toBeChecked();
+
+    try {
+      // The next Monday between 09:00 and 09:30 in this browser's time zone, which is what was stored with the switch.
+      const zone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const local = new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+      const slots = Array.from({ length: 8 * 96 }, (_, i) => new Date(Math.ceil(Date.now() / 900_000) * 900_000 + i * 900_000));
+      const isMondayMorning = (d: Date) => /^Mon,? 09:[0-2]\d$/.test(local.format(d));
+      const monday = slots.find(isMondayMorning)!;
+      const queue = async (at: Date) =>
+        (await (
+          await request.post(`${localEnv("NEXT_PUBLIC_SUPABASE_URL")}/rest/v1/rpc/queue_weekly_summaries`, {
+            headers: { apikey: localEnv("SUPABASE_SERVICE_ROLE_KEY"), authorization: `Bearer ${localEnv("SUPABASE_SERVICE_ROLE_KEY")}` },
+            data: { p_now: at.toISOString() },
+          })
+        ).json()) as number;
+      expect(await queue(new Date(monday.getTime() + 24 * 3_600_000))).toBe(0); // not on a Tuesday
+      expect(await queue(monday)).toBe(1);
+      expect(await queue(monday)).toBe(0); // once a week
+      expect((await request.get("/api/jobs/run", { headers: { authorization: `Bearer ${localEnv("CRON_SECRET")}` } })).ok()).toBe(true);
+
+      let body: string | null = null;
+      await expect.poll(async () => (body = await emailText("demo@basenine.test", "Weekly summary:")), { timeout: 20_000 }).not.toBeNull();
+      expect(body).toContain("Acme (demo site)");
+      expect(body).toMatch(/\d+ came in, \d+ closed this week/);
+      expect(body).toMatch(/\d+ open, \d+ in progress/);
+      expect(body).toContain(`/p/${PROJECT}/board`);
+    } finally {
+      await page.goto("/account");
+      if (await weekly.isChecked()) await toggle();
+      await expect(weekly).not.toBeChecked();
+    }
+  });
+});
+
 test.describe("export", () => {
   test("the board exports every comment as a CSV file; signed-out visitors get nothing", async ({ page, request }) => {
     await login(page);
