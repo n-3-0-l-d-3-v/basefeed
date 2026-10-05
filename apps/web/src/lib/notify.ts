@@ -59,11 +59,11 @@ function commentLink(c: { project_id: string; page_id: string; id: string }) {
  * was emailed to. It only works while the project still has an active share link, so turning
  * client access off also turns these off; without one the client just gets the page.
  */
-export async function clientLink(c: { id: string; project_id: string; page: { url: string } }, guest: { id: string; name: string }): Promise<string> {
+export async function clientLink(c: { id: string; project_id: string; page: { url: string } }, guest: { id: string; name: string }, ttl = "7d"): Promise<string> {
   const origin = originOf(c.page.url);
   const link = await activeShareLink(c.project_id);
   if (!origin || !link) return c.page.url;
-  const token = await signWidgetToken({ sub: guest.id, kind: "guest", pid: c.project_id, org: origin, name: guest.name, sl: link.id }, "7d");
+  const token = await signWidgetToken({ sub: guest.id, kind: "guest", pid: c.project_id, org: origin, name: guest.name, sl: link.id }, ttl);
   return `${c.page.url}#bn_token=${encodeURIComponent(token)}&bn_c=${c.id}`;
 }
 
@@ -373,7 +373,8 @@ async function deliver(recipients: Recipient[], subject: string, build: (r: Reci
     const key = r.email.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const result = await sendEmail({ to: r.email, subject, ...build(r) });
+    // Subjects quote what people typed; a line break in one would be rejected by the mail provider.
+    const result = await sendEmail({ to: r.email, subject: subject.replace(/\s+/g, " ").trim().slice(0, 200), ...build(r) });
     if (!result.sent) console.warn(`[notify] not sent to ${r.email}: ${result.reason}`);
   }
 }

@@ -285,7 +285,7 @@ One Postgres table is the queue for AI triage, email and webhooks. Workers claim
 | Dashboard | Supabase Auth session; every query runs under row-level security |
 | Widget API | JWT (HS256, 12 h) scoped to one person, one project and one origin; re-checked against the database on every request, so removing a member or switching off a share link takes effect immediately; per-person rate limit |
 | Client email links | The same token, 7 days, valid only while the project still has an active share link |
-| Client status page | A separate read-only token (30 days) for one client on one project; not accepted by any write endpoint; dead as soon as the share link is turned off |
+| Client status page | A separate token (30 days) for one client on one project; not accepted by any write endpoint; dead as soon as the share link is turned off. The page's "on the page" links sign that client in on the site for two hours, so the link is as private as the client's emails |
 | REST API and MCP | Personal tokens (`bnf_…`), stored only as a hash, revocable; every query scoped to the workspaces the owner belongs to today; per-token rate limit |
 | Webhooks | HTTPS only; loopback, link-local and private addresses refused; redirects not followed; body signed with HMAC-SHA256 |
 | Client sites | Stay on their own origin; the dashboard exchanges only origin-checked messages with the widget; nothing may frame the dashboard |

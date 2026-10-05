@@ -50,7 +50,10 @@ function Inactive() {
 }
 
 /**
- * One link for a client: where each of their comments stands. Read-only, no account. The link is
+ * One link for a client: where each of their comments stands. The page itself changes nothing, but
+ * its "on the page" links open the site signed in as that client (for two hours), like the links in
+ * their emails: whoever holds this link can act as the client, so it is as private as those emails.
+ * No account. The link is
  * signed for one client on one project and works only while the project still has the share link
  * it was issued under, so turning client access off turns this off too.
  */
@@ -85,7 +88,7 @@ export default async function StatusPage({ params }: { params: Promise<{ token: 
   for (const r of replies ?? []) if (!lastReply.has(r.comment_id)) lastReply.set(r.comment_id, r);
 
   const links = new Map<string, string>();
-  for (const c of comments) links.set(c.id, await clientLink(c, guest));
+  for (const c of comments) links.set(c.id, await clientLink(c, guest, "2h")); // made for this view and clicked now, so short-lived
 
   const count = (g: Group) => comments.filter((c) => groupOf(c) === g).length;
   const summary = [
