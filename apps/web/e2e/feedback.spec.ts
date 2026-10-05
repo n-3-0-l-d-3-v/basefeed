@@ -605,6 +605,11 @@ test.describe("clients via share link", () => {
     await expect(view.getByRole("heading", { name: "Your feedback, Robin Client" })).toBeVisible();
     await outsider.close();
     await expect.poll(async () => (await inbox("demo@basenine.test")).some((m) => m.Subject.startsWith("Not fixed yet")), { timeout: 20_000 }).toBe(true);
+
+    // Impact reads the same history: both of this client's answers are counted as time spent waiting for them.
+    await page.goto(`/p/${PROJECT}/impact`);
+    const stages = page.getByRole("region", { name: "Where the time goes" });
+    await expect(stages).toContainText(/waiting for the client's answer\s*median of 2 times/);
   });
 });
 
