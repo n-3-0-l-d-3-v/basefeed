@@ -398,6 +398,9 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_review_requests":
+{ Args: { "p_guest": string,"p_project": string }; Returns: string[]
+                           },
 "finish_job":
 { Args: { "p_error"?: string,"p_id": number }; Returns: undefined
                            },

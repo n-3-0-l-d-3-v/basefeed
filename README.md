@@ -32,7 +32,7 @@ confirm, without anyone chasing anyone.
 - **What it is.** A feedback tool for a Webflow studio: clients comment on the real site, the team works from a canvas and a board, and the tool does the bookkeeping in between.
 - **What changed from Feedback 2.0.** No proxy (so Cloudflare-protected sites work), comments that stay on their element when the page is edited, and client sites that stay on their own origin.
 - **What it automates.** Capturing context, labelling and sorting, assigning, noticing fixes, asking the client to confirm, reminding them, and telling Slack or n8n. People only decide.
-- **How far it is trusted.** 196 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
+- **How far it is trusted.** 200 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
 
 ## Why it exists
 
@@ -397,12 +397,12 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-196 automated tests, plus type checks and lint, on every push.
+200 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 27 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
-| Database | 96 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders, weekly summaries |
+| Database | 100 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders, weekly summaries |
 | End to end | 24 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, editing an AI question, bulk actions on the board, the weekly summary, API security |
 | Web | 26 | `pnpm --filter web test` | Triage rules, impact counts and stage timing, weekly summary numbers, webhook URL safety, CSV export (including formula-injection safety) |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |

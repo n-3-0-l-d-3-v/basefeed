@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(16);
 
 insert into auth.users (id, email, raw_user_meta_data, aud, role)
 values ('00000000-0000-0000-0000-0000000000c1', 'cara@studio.test', '{"name":"Cara"}', 'authenticated', 'authenticated');
@@ -51,6 +51,25 @@ select is((select count(*)::int from public.jobs where payload ->> 'event' = 're
 -- Resolving again starts a fresh review.
 update public.comments set status = 'resolved' where id = '30000000-0000-0000-0000-0000000000c2';
 select is((select client_review from public.comments where id = '30000000-0000-0000-0000-0000000000c2'), 'pending', 'a second fix is reviewed again');
+
+-- Asking the client is claimed in one step, so it cannot be done twice for the same resolve.
+insert into public.comments (id, project_id, page_id, author_guest_id, author_user_id, author_name, body, pin) values
+  ('30000000-0000-0000-0000-0000000000c8', '10000000-0000-0000-0000-0000000000c1', '20000000-0000-0000-0000-0000000000c1', '40000000-0000-0000-0000-0000000000c2', null, 'Marcus', 'Footer link broken', '{"x":0.3,"y":0.3}'),
+  ('30000000-0000-0000-0000-0000000000c9', '10000000-0000-0000-0000-0000000000c1', '20000000-0000-0000-0000-0000000000c1', '40000000-0000-0000-0000-0000000000c2', null, 'Marcus', 'Wrong phone number', '{"x":0.4,"y":0.4}');
+update public.comments set status = 'resolved' where id in ('30000000-0000-0000-0000-0000000000c8', '30000000-0000-0000-0000-0000000000c9');
+select is(
+  (select count(*)::int from public.claim_review_requests('10000000-0000-0000-0000-0000000000c1', '40000000-0000-0000-0000-0000000000c2')
+   where claim_review_requests in ('30000000-0000-0000-0000-0000000000c8', '30000000-0000-0000-0000-0000000000c9')), 2,
+  'the first claim takes every waiting comment of that client');
+select is((select count(*)::int from public.claim_review_requests('10000000-0000-0000-0000-0000000000c1', '40000000-0000-0000-0000-0000000000c2')), 0,
+  'a second claim finds nothing, so the client is not emailed twice');
+select is(
+  (select count(*)::int from public.activity where action = 'client.asked' and comment_id in ('30000000-0000-0000-0000-0000000000c8', '30000000-0000-0000-0000-0000000000c9')), 2,
+  'each comment''s history records that the client was asked');
+set local role authenticated;
+select throws_ok($$ select public.claim_review_requests('10000000-0000-0000-0000-0000000000c1', '40000000-0000-0000-0000-0000000000c2') $$, '42501', null,
+  'signed-in users cannot claim sign-off requests');
+reset role;
 
 select * from finish();
 rollback;

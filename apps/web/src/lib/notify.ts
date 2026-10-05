@@ -265,13 +265,21 @@ async function handleReviewRequest(commentId: string): Promise<void> {
     .order("number");
   const rows = (pending ?? []) as unknown as { id: string; number: number; body: string; project_id: string; resolved_at: string | null; page: { url: string; title: string | null } }[];
   if (rows.length === 0) return; // answered, or reopened, before this ran
-  const { data: asked } = await admin.from("activity").select("comment_id, created_at").eq("action", "client.asked").in("comment_id", rows.map((r) => r.id));
-  const alreadyAsked = (r: (typeof rows)[number]) => (asked ?? []).some((a) => a.comment_id === r.id && (!r.resolved_at || Date.parse(a.created_at) >= Date.parse(r.resolved_at)));
-  const due = rows.filter((r) => !alreadyAsked(r));
+  // The database claims them and records "asked" in one locked step, so two runners at the same
+  // moment cannot both email the client.
+  const claim = await admin.rpc("claim_review_requests", { p_project: c.project_id, p_guest: guest.id });
+  let due: typeof rows;
+  if (!claim.error) {
+    const claimed = new Set((claim.data ?? []) as string[]);
+    due = rows.filter((r) => claimed.has(r.id));
+  } else {
+    // A database without that function yet: the same rule, without the lock.
+    const { data: asked } = await admin.from("activity").select("comment_id, created_at").eq("action", "client.asked").in("comment_id", rows.map((r) => r.id));
+    const alreadyAsked = (r: (typeof rows)[number]) => (asked ?? []).some((a) => a.comment_id === r.id && (!r.resolved_at || Date.parse(a.created_at) >= Date.parse(r.resolved_at)));
+    due = rows.filter((r) => !alreadyAsked(r));
+    if (due.length) await admin.from("activity").insert(due.map((r) => ({ project_id: r.project_id, comment_id: r.id, actor_user_id: null, actor_name: "Automation", action: "client.asked" })));
+  }
   if (due.length === 0) return;
-
-  // Recorded before sending: a second job starting now sees these as handled.
-  await admin.from("activity").insert(due.map((r) => ({ project_id: r.project_id, comment_id: r.id, actor_user_id: null, actor_name: "Automation", action: "client.asked" })));
 
   const status = await statusLink(c.project_id, guest.id);
   const to: Recipient[] = [{ email: guest.email, name: guest.name, kind: "guest" }];
