@@ -333,6 +333,39 @@ test.describe("team on the dashboard", () => {
   });
 });
 
+test.describe("board, several at once", () => {
+  test("selected cards are moved and assigned together, each change recorded per comment", async ({ page }) => {
+    await login(page);
+    await page.goto(`/p/${PROJECT}/board`);
+    const open = page.getByRole("region", { name: "Open column" });
+    const cards = open.getByRole("article");
+    await expect(cards.nth(1)).toBeVisible();
+    const before = await cards.count();
+    const titles = [await cards.nth(0).getByRole("button").first().innerText(), await cards.nth(1).getByRole("button").first().innerText()];
+    await cards.nth(0).getByRole("checkbox").check({ force: true });
+    await cards.nth(1).getByRole("checkbox").check({ force: true });
+
+    const bar = page.getByRole("toolbar", { name: "Selected comments" });
+    await expect(bar).toContainText("2 selected");
+    await bar.getByLabel("Assign selected to").selectOption({ label: "Demo Designer" });
+    await expect(bar).toHaveCount(0); // applied, selection cleared
+
+    for (const card of [cards.nth(0), cards.nth(1)]) await card.getByRole("checkbox").check({ force: true });
+    await page.getByRole("toolbar", { name: "Selected comments" }).getByLabel("Move selected to").selectOption({ label: "In progress" });
+    await expect(open.getByRole("article")).toHaveCount(before - 2);
+
+    // Saved, not just moved on screen; and each comment's own history has the change.
+    await page.reload();
+    const progress = page.getByRole("region", { name: "In progress column" });
+    for (const t of titles) await expect(progress.getByText(t.split("\n").pop()!.trim()).first()).toBeVisible();
+    await progress.getByText(titles[0]!.split("\n").pop()!.trim()).first().click();
+    const detail = page.getByRole("article", { name: /Comment \d+/ }).last();
+    await expect(detail.getByLabel("Assignee").locator("option:checked")).toHaveText("Demo Designer");
+    await detail.getByText(/^History/).click();
+    await expect(detail.getByText("Demo Designer moved it from open to in progress")).toBeVisible();
+  });
+});
+
 test.describe("clients via share link", () => {
   test("comment with just a name and email, and the team sees it", async ({ page, browser }) => {
     await login(page);
