@@ -11,7 +11,8 @@ type Payload =
   | { event: "review.requested"; comment_id: string }
   | { event: "review.rejected"; comment_id: string }
   | { event: "digest"; user_id: string; since: string }
-  | { event: "review.reminder"; project_id: string; guest_id: string };
+  | { event: "review.reminder"; project_id: string; guest_id: string }
+  | { event: "weekly"; user_id: string; since: string };
 
 type Pref = "new_comments" | "assignments" | "replies";
 type Recipient = { email: string; name: string; kind: "member" | "guest" };
@@ -162,6 +163,85 @@ ${sections.map(section).join("")}
   await deliver([recipient], `Daily digest: ${summary}`, () => ({ html, text: `${text}\n` }));
 }
 
+export interface WeekRow {
+  status: string;
+  client_review: string | null;
+  triage_state: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+/** One project's week in numbers. Pure, so the arithmetic is tested without a database. */
+export function weekNumbers(rows: readonly WeekRow[], since: string, now: number) {
+  const from = Date.parse(since);
+  const open = rows.filter((r) => r.status !== "resolved");
+  const oldest = open.reduce((min, r) => Math.min(min, Date.parse(r.created_at)), Infinity);
+  return {
+    came: rows.filter((r) => Date.parse(r.created_at) >= from).length,
+    closed: rows.filter((r) => r.resolved_at && Date.parse(r.resolved_at) >= from).length,
+    open: open.filter((r) => r.status === "open").length,
+    inProgress: open.filter((r) => r.status === "in_progress").length,
+    waitingOnClient: rows.filter((r) => r.status === "resolved" && r.client_review === "pending").length,
+    needDecision: open.filter((r) => r.triage_state === "ready").length,
+    oldestOpenDays: Number.isFinite(oldest) ? Math.floor((now - oldest) / 86_400_000) : null,
+  };
+}
+
+/** Monday's summary for one member: where each of their projects stands. Sends nothing when nothing is open and nothing moved. */
+async function handleWeekly(userId: string, since: string): Promise<void> {
+  const admin = supabaseAdmin();
+  const [{ data: profile }, { data: prefs }, { data: ws }] = await Promise.all([
+    admin.from("profiles").select("id, name, email").eq("id", userId).maybeSingle(),
+    admin.from("notification_prefs").select("*").eq("user_id", userId).maybeSingle(),
+    admin.from("workspace_members").select("workspace_id").eq("user_id", userId),
+  ]);
+  // Switched off between being queued and now.
+  if (!profile?.email || (prefs as Record<string, unknown> | null)?.weekly_summary !== true) return;
+  const workspaceIds = (ws ?? []).map((w) => w.workspace_id);
+  if (workspaceIds.length === 0) return;
+  const { data: projects } = await admin.from("projects").select("id, name").in("workspace_id", workspaceIds).is("archived_at", null).order("name");
+  if (!projects?.length) return;
+  const { data: rows } = await admin
+    .from("comments")
+    .select("project_id, status, client_review, triage_state, created_at, resolved_at")
+    .in("project_id", projects.map((p) => p.id))
+    .is("context->qa", null);
+
+  const now = Date.now();
+  const sections = projects
+    .map((p) => ({ name: p.name, url: `${env().APP_URL}/p/${p.id}/board`, n: weekNumbers((rows ?? []).filter((r) => r.project_id === p.id), since, now) }))
+    .filter((s) => s.n.came + s.n.closed + s.n.open + s.n.inProgress + s.n.waitingOnClient > 0);
+  if (sections.length === 0) return;
+
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const totalOpen = sections.reduce((sum, s) => sum + s.n.open + s.n.inProgress, 0);
+  const summary = `${plural(sections.length, "project")}, ${totalOpen} still to do`;
+  const facts = (n: ReturnType<typeof weekNumbers>) =>
+    [
+      `${n.came} came in, ${n.closed} closed this week`,
+      `${n.open} open, ${n.inProgress} in progress`,
+      ...(n.waitingOnClient ? [`${n.waitingOnClient} waiting for the client to confirm`] : []),
+      ...(n.needDecision ? [`${plural(n.needDecision, "AI flag")} waiting for a decision`] : []),
+      ...(n.oldestOpenDays !== null && n.oldestOpenDays >= 7 ? [`oldest open comment: ${n.oldestOpenDays} days`] : []),
+    ];
+
+  const html = `${SHELL_OPEN}
+<tr><td style="padding:20px 28px 0"><div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6b665e">Weekly summary · last 7 days</div>
+<h1 style="margin:8px 0 0;font-size:20px;font-weight:500;letter-spacing:-0.02em;line-height:1.3">${esc(summary)}</h1></td></tr>
+${sections
+    .map(
+      (s) => `<tr><td style="padding:18px 28px 0"><a href="${esc(s.url)}" style="color:#0a0a0a;font-weight:500;font-size:15px;text-decoration:none">${esc(s.name)}</a>
+<div style="margin-top:8px;border-left:3px solid #ffacca;background:#fff0f5;border-radius:8px;padding:9px 12px;font-size:14px;line-height:1.6">${facts(s.n).map(esc).join("<br>")}</div></td></tr>`,
+    )
+    .join("")}
+<tr><td style="padding:22px 28px 28px"><a href="${esc(env().APP_URL)}" style="display:inline-block;background:#96ff7c;color:#0a0a0a;text-decoration:none;font-weight:500;font-size:14px;padding:11px 18px;border-radius:10px">Open Basenine Feedback</a></td></tr>
+</table>
+<div style="max-width:520px;padding:14px 8px;font-size:12px;color:#6b665e">You asked for a summary every Monday. Change it in Basenine Feedback → Account.</div>
+</td></tr></table></body></html>`;
+  const text = [`Weekly summary: ${summary}`, ...sections.map((s) => [s.name, ...facts(s.n).map((f) => `- ${f}`), `  ${s.url}`].join("\n"))].join("\n\n");
+  await deliver([{ email: profile.email, name: profile.name || profile.email, kind: "member" }], `Weekly summary: ${summary}`, () => ({ html, text: `${text}\n` }));
+}
+
 /** One email to a client listing everything of theirs still waiting for a Looks good / Not yet. */
 async function handleReminder(projectId: string, guestId: string): Promise<void> {
   const admin = supabaseAdmin();
@@ -223,6 +303,7 @@ export async function handleNotify(p: Payload): Promise<void> {
 
   if (p.event === "digest") return handleDigest(p.user_id, p.since);
   if (p.event === "review.reminder") return handleReminder(p.project_id, p.guest_id);
+  if (p.event === "weekly") return handleWeekly(p.user_id, p.since);
 
   if (p.event === "comment.created") {
     const c = await loadComment(p.comment_id);

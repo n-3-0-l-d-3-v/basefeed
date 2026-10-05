@@ -77,7 +77,7 @@ function Switch({ id, checked, onChange, label, description }: { id: string; che
   );
 }
 
-type PrefKey = "new_comments" | "daily_digest" | "assignments" | "replies";
+type PrefKey = "new_comments" | "daily_digest" | "weekly_summary" | "assignments" | "replies";
 
 export function NotificationToggles({ initial, timeZone }: { initial: Record<PrefKey, boolean>; timeZone: string | null }) {
   const [prefs, setPrefs] = useState(initial);
@@ -98,6 +98,7 @@ export function NotificationToggles({ initial, timeZone }: { initial: Record<Pre
       )}
       <Switch id="np-assign" checked={prefs.assignments} onChange={(v) => void set("assignments", v)} label="Assigned to me" description="A comment is assigned to you." />
       <Switch id="np-replies" checked={prefs.replies} onChange={(v) => void set("replies", v)} label="Replies" description="Someone replies to your comment, or to one assigned to you." />
+      <Switch id="np-weekly" checked={prefs.weekly_summary} onChange={(v) => void set("weekly_summary", v)} label="Weekly summary" description="Every Monday at 09:00 your time: for each project, what came in, what was closed, what is still open and what is waiting on the client." />
       <Alert error={error} />
     </div>
   );
