@@ -283,6 +283,43 @@ test.describe("team on the dashboard", () => {
     await expect(image).toHaveCount(0);
   });
 
+  test("an AI flag is a draft: the team edits the clarifying question before it is sent", async ({ page, request }) => {
+    // AI is off in tests, so store the kind of result it produces for a vague comment.
+    const service = { apikey: localEnv("SUPABASE_SERVICE_ROLE_KEY"), authorization: `Bearer ${localEnv("SUPABASE_SERVICE_ROLE_KEY")}` };
+    const triage = {
+      title: "Clarify how the headline should change",
+      category: "question",
+      priority: "medium",
+      task: "Ask the author what should change.",
+      needsClarification: true,
+      clarificationQuestion: "Could you say how the headline should change?",
+      duplicateOf: null,
+      confidence: 0.3,
+      change: null,
+      scope: "tweak",
+      reason: null,
+    };
+    const stored = await request.patch(`${localEnv("NEXT_PUBLIC_SUPABASE_URL")}/rest/v1/comments?project_id=eq.${PROJECT}&body=ilike.*Headline is too long on mobile*`, {
+      headers: { ...service, prefer: "return=representation" },
+      data: { triage, triage_state: "ready", title: triage.title },
+    });
+    const rows = (await stored.json()) as { id: string; page_id: string }[];
+    expect(rows).toHaveLength(1);
+
+    await page.goto(`/p/${PROJECT}?page=${rows[0]!.page_id}&c=${rows[0]!.id}`);
+    const detail = page.getByRole("article", { name: /Comment \d+/ });
+    const flag = detail.getByRole("region", { name: "AI triage" });
+    await expect(flag.getByText("Too vague to act on")).toBeVisible();
+    const question = flag.getByRole("textbox", { name: /Question to send/ });
+    await expect(question).toHaveValue("Could you say how the headline should change?");
+    const edited = unique("Shorter wording, or a smaller size?");
+    await question.fill(edited);
+    await flag.getByRole("button", { name: /^Ask / }).click();
+    // The edited wording is what goes into the thread, and the flag is done.
+    await expect(detail.getByText(edited)).toBeVisible();
+    await expect(flag).toHaveCount(0);
+  });
+
   test("moves a card on the board and records who did it", async ({ page }) => {
     await page.goto(`/p/${PROJECT}/board`);
     const card = page.getByRole("region", { name: "Open column" }).locator("article").first();
