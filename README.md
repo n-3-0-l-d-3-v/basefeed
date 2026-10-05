@@ -32,7 +32,7 @@ confirm, without anyone chasing anyone.
 - **What it is.** A feedback tool for a Webflow studio: clients comment on the real site, the team works from a canvas and a board, and the tool does the bookkeeping in between.
 - **What changed from Feedback 2.0.** No proxy (so Cloudflare-protected sites work), comments that stay on their element when the page is edited, and client sites that stay on their own origin.
 - **What it automates.** Capturing context, labelling and sorting, assigning, noticing fixes, asking the client to confirm, reminding them, and telling Slack or n8n. People only decide.
-- **How far it is trusted.** 176 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
+- **How far it is trusted.** 195 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
 
 ## Why it exists
 
@@ -85,7 +85,7 @@ flowchart LR
 *"This doesn't feel right. Can you fix it?" cannot be acted on. The AI says so, drafts the question,
 and one click sends it to the client. On a clear comment there is no AI card at all.*
 
-- **AI triage that stays quiet.** A clear comment gets a short title and a category, nothing more. It speaks up only for: a comment too vague to act on (one click sends the clarifying question to the author), a duplicate of an older comment, a priority that is clearly wrong, and requests that are new work rather than a tweak. When the author dictates wording ("should say Book a demo") the exact replacement is extracted, ready to paste.
+- **AI triage that stays quiet.** A clear comment gets a short title and a category, nothing more. It speaks up only for: a comment too vague to act on (the AI drafts the clarifying question; the team member can edit it, and one click sends it to the author), a duplicate of an older comment, a priority that is clearly wrong, and requests that are new work rather than a tweak. When the author dictates wording ("should say Book a demo") the exact replacement is extracted, ready to paste.
 - **Assignment rules.** Per project: copy goes to the writer, bugs to the developer. The rule applies the moment a comment is labelled (by triage, the page check or a person), is recorded in the comment's history as a rule, and only ever fills an empty assignee.
 - **Page check.** One click inspects the live page for dead links, missing alt text, empty or out-of-order headings, duplicate IDs, placeholder text, broken images, horizontal overflow and low contrast, and files each finding as a comment pinned to the element. Plain DOM inspection: no AI, same page in, same findings out.
 
@@ -122,10 +122,10 @@ verify, instead of someone re-reading every open comment against the new page.*
 
 <p align="center"><img src="docs/images/board.png" alt="The board: comments in Open, In progress and Resolved columns" width="100%"></p>
 
-- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved, export everything as CSV), Ctrl+K search, team invites.
-- **Email:** new comments, assignments and replies, each switchable per person. New comments can arrive as one digest a day, at 09:00 in that person's own time zone, instead of one email each.
+- **Work surfaces:** Canvas (the live site at real device widths), Board (drag between Open / In progress / Resolved, select several cards to move or assign together, export everything as CSV), Ctrl+K search, team invites.
+- **Email:** new comments, assignments and replies, each switchable per person. New comments can arrive as one digest a day, at 09:00 in that person's own time zone, instead of one email each. A weekly summary on Monday morning, for whoever runs the account, gives each project's numbers: what came in, what was closed, what is open, what is waiting on the client.
 - **Connections:** outgoing webhooks (Slack, n8n, Zapier), a REST API and an MCP server for coding agents. See [Integrations](#integrations).
-- **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. Counted from the data, never estimated.
+- **Impact.** Each project counts what the tool handled: context captured, comments sorted and flagged, fixes noticed, sign-offs, time to resolve. It also shows where a comment's time goes (waiting to be picked up, being worked on, waiting for the client's answer) as medians read from the history. Counted from the data, never estimated.
 
 <p align="center"><img src="docs/images/impact.png" alt="The Impact tab: counts of what the tool handled on this project" width="100%"></p>
 
@@ -145,6 +145,7 @@ Each row is a step somebody does by hand in a feedback round run over email, cha
 | Asking the client whether the fix is right | Database trigger + email | Sent when a client's comment is resolved, with a signed link |
 | Reminding a client who has not answered | Daily job | Once, after the number of days the project chose, one email for everything waiting |
 | Telling the client where everything stands | Client status page | One read-only link, in every email |
+| Telling whoever runs the account where every project stands | Weekly summary | Monday 09:00 in their time zone, one email, only if there is something to report |
 | Telling the team's other tools | Webhooks | Signed, retried, with a ready-made sentence for Slack |
 | Handing a task to a coding agent | REST API, MCP server | The same hand-off text as "Copy for AI agent" |
 | Keeping the record of who did what | Database triggers | Activity log written by the database, not by application code |
@@ -396,14 +397,14 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-176 automated tests, plus type checks and lint, on every push.
+195 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 27 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
-| Database | 89 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders |
-| End to end | 20 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, API security |
-| Web | 17 | `pnpm --filter web test` | Triage rules, impact counts, webhook URL safety, CSV export (including formula-injection safety) |
+| Database | 96 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders, weekly summaries |
+| End to end | 23 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, editing an AI question, bulk actions on the board, the weekly summary, API security |
+| Web | 26 | `pnpm --filter web test` | Triage rules, impact counts and stage timing, weekly summary numbers, webhook URL safety, CSV export (including formula-injection safety) |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
 | Compiler | 14 | `pnpm --filter @bn/compiler test` | Reuse before creation, idempotency, deltas, naming validation, 300 random pages per run |
 

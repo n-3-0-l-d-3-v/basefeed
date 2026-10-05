@@ -139,5 +139,5 @@ test("README screenshots", async ({ page, request, browser }) => {
 
   await page.goto(`/p/${project}/impact`);
   await settle();
-  await snap("impact");
+  await page.screenshot({ path: shot("impact"), fullPage: true }); // the page is taller than the window
 });
