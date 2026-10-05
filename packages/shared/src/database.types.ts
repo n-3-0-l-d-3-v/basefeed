@@ -170,13 +170,13 @@ isOneToOne: false
                   ]
                 },"notification_prefs": {
                   Row: {
-                    "assignments": boolean,"daily_digest": boolean,"digest_since": string | null,"new_comments": boolean,"replies": boolean,"timezone": string,"updated_at": string,"user_id": string
+                    "assignments": boolean,"daily_digest": boolean,"digest_since": string | null,"new_comments": boolean,"replies": boolean,"timezone": string,"updated_at": string,"user_id": string,"weekly_summary": boolean
                   }
                   Insert: {
-                    "assignments"?: boolean,"daily_digest"?: boolean,"digest_since"?: string | null,"new_comments"?: boolean,"replies"?: boolean,"timezone"?: string,"updated_at"?: string,"user_id": string
+                    "assignments"?: boolean,"daily_digest"?: boolean,"digest_since"?: string | null,"new_comments"?: boolean,"replies"?: boolean,"timezone"?: string,"updated_at"?: string,"user_id": string,"weekly_summary"?: boolean
                   }
                   Update: {
-                    "assignments"?: boolean,"daily_digest"?: boolean,"digest_since"?: string | null,"new_comments"?: boolean,"replies"?: boolean,"timezone"?: string,"updated_at"?: string,"user_id"?: string
+                    "assignments"?: boolean,"daily_digest"?: boolean,"digest_since"?: string | null,"new_comments"?: boolean,"replies"?: boolean,"timezone"?: string,"updated_at"?: string,"user_id"?: string,"weekly_summary"?: boolean
                   }
                   Relationships: [
                     
@@ -423,6 +423,9 @@ isOneToOne: false
                            },
 "queue_webhooks":
 { Args: { "p_actor": string,"p_comment": string,"p_event": string,"p_meta"?: Json,"p_project": string }; Returns: undefined
+                           },
+"queue_weekly_summaries":
+{ Args: { "p_now"?: string }; Returns: number
                            },
 "review_comment_as_guest":
 { Args: { "p_approved": boolean,"p_comment": string,"p_guest": string,"p_note"?: string,"p_project": string }; Returns: undefined
