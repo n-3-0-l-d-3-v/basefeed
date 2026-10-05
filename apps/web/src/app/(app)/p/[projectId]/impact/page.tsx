@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/ui";
-import { getProject, getProjectComments } from "@/lib/data";
-import { duration, impact } from "@/lib/impact";
+import { getProject, getProjectComments, getSession } from "@/lib/data";
+import { duration, impact, stageTimes, type StageTime } from "@/lib/impact";
 
 export const metadata: Metadata = { title: "Impact" };
 
@@ -27,10 +27,32 @@ function Stat({ value, label, tone }: { value: ReactNode; label: string; tone?: 
   );
 }
 
+function Stage({ label, time }: { label: string; time: StageTime }) {
+  return (
+    <div className="flex flex-col-reverse justify-end gap-1.5">
+      <dt className="text-[12px] leading-snug text-muted">
+        {label}
+        <span className="block text-[11px]">{time.count === 0 ? "no comment has been through this yet" : `median of ${time.count} ${time.count === 1 ? "time" : "times"}`}</span>
+      </dt>
+      <dd className="tabular text-[26px] leading-none">{time.medianHours === null ? "–" : duration(time.medianHours)}</dd>
+    </div>
+  );
+}
+
 export default async function ImpactPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
   const { project } = await getProject(projectId);
-  const i = impact(await getProjectComments(projectId));
+  const comments = await getProjectComments(projectId);
+  const i = impact(comments);
+  const { supabase } = await getSession();
+  const { data: events } = await supabase
+    .from("activity")
+    .select("comment_id, action, meta, created_at")
+    .eq("project_id", projectId)
+    .in("action", ["comment.status", "client.approved", "client.rejected"])
+    .order("created_at")
+    .limit(5000);
+  const stages = stageTimes(comments, events ?? []);
   const flagged = i.flags.vague + i.flags.duplicate + i.flags.priority + i.flags.newWork;
 
   return (
@@ -89,6 +111,20 @@ export default async function ImpactPage({ params }: { params: Promise<{ project
               <Stat value={i.signOff.sentBack} label="sent back and reopened" tone={i.signOff.sentBack ? "pink" : undefined} />
             </dl>
           </Card>
+
+          <section aria-labelledby="stages" className="rounded-xl bg-panel p-5 ring-1 ring-line sm:col-span-2">
+            <h2 id="stages" className="text-[15px] font-medium">
+              Where the time goes
+            </h2>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+              <Stage label="waiting to be picked up" time={stages.waitingToStart} />
+              <Stage label="being worked on" time={stages.inProgress} />
+              <Stage label="waiting for the client's answer" time={stages.waitingForClient} />
+            </dl>
+            <p className="mt-5 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
+              Read from the history the database keeps for every comment. It shows which stage to shorten: the team&apos;s queue, the work itself, or the client&apos;s reply.
+            </p>
+          </section>
 
           <section className="grid gap-4 rounded-xl bg-night p-5 text-white sm:col-span-2 sm:grid-cols-3">
             <dl className="grid grid-cols-2 gap-4 sm:col-span-2">

@@ -84,6 +84,78 @@ export function impact(comments: readonly Row[]): Impact {
   return out;
 }
 
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const v = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
+}
+
+export interface StageTime {
+  /** Median hours, over the comments that went through this stage; null when none has yet. */
+  medianHours: number | null;
+  count: number;
+}
+
+export interface Stages {
+  /** From the comment being left to the first time anyone moved it. */
+  waitingToStart: StageTime;
+  /** From "in progress" to "resolved". */
+  inProgress: StageTime;
+  /** From "resolved" to the client's Looks good or Not yet. */
+  waitingForClient: StageTime;
+}
+
+type StageEvent = { comment_id: string | null; action: string; meta: unknown; created_at: string };
+
+/**
+ * Where a comment's time goes, from the activity log the database keeps. Measured per comment and
+ * reported as a median, so one comment that sat for a month does not hide how the rest went.
+ */
+export function stageTimes(comments: readonly { id: string; created_at: string }[], activity: readonly StageEvent[]): Stages {
+  const byComment = new Map<string, StageEvent[]>();
+  for (const e of activity) {
+    if (!e.comment_id) continue;
+    const list = byComment.get(e.comment_id);
+    if (list) list.push(e);
+    else byComment.set(e.comment_id, [e]);
+  }
+  const hours = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) / 3_600_000;
+  const toStatus = (e: StageEvent) => (e.action === "comment.status" ? ((e.meta as { to?: string } | null)?.to ?? null) : null);
+  const start: number[] = [];
+  const work: number[] = [];
+  const client: number[] = [];
+
+  for (const c of comments) {
+    // A client's "Not yet" and the reopening it causes are written in the same instant: read the answer first.
+    const answerFirst = (e: StageEvent) => (e.action.startsWith("client.") ? 0 : 1);
+    const events = (byComment.get(c.id) ?? []).slice().sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || answerFirst(a) - answerFirst(b));
+    const firstMove = events.find((e) => e.action === "comment.status");
+    if (firstMove) start.push(hours(c.created_at, firstMove.created_at));
+
+    let startedAt: string | null = null;
+    let resolvedAt: string | null = null;
+    for (const e of events) {
+      const to = toStatus(e);
+      if (to === "in_progress") startedAt = e.created_at;
+      if (to === "resolved") {
+        if (startedAt) work.push(hours(startedAt, e.created_at));
+        startedAt = null;
+        resolvedAt = e.created_at;
+      } else if (to) resolvedAt = null;
+      if ((e.action === "client.approved" || e.action === "client.rejected") && resolvedAt) {
+        client.push(hours(resolvedAt, e.created_at));
+        resolvedAt = null;
+      }
+    }
+  }
+  return {
+    waitingToStart: { medianHours: median(start), count: start.length },
+    inProgress: { medianHours: median(work), count: work.length },
+    waitingForClient: { medianHours: median(client), count: client.length },
+  };
+}
+
 export function duration(hours: number): string {
   if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
   if (hours < 48) return `${Math.round(hours)} h`;
