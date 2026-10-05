@@ -521,10 +521,16 @@ test.describe("clients via share link", () => {
       await expect(detail.getByText("Waiting for Robin to confirm")).toBeVisible();
       await detail.getByRole("button", { name: "Close" }).click();
     }
-    const linkFor = async (text: string) => {
+    // Resolved one after the other, the two may arrive as one email each or as one email listing both:
+    // either way the link that follows a comment's text is the link to that comment.
+    const askEmail = async (text: string) => {
       let body: string | null = null;
-      await expect.poll(async () => (body = await emailText(email, text, "Does it look right?")), { timeout: 20_000 }).not.toBeNull();
-      return /Check it on the page: (\S+)/.exec(body!)![1]!;
+      await expect.poll(async () => (body = await emailText(email, text, "Check it on the page:")), { timeout: 20_000 }).not.toBeNull();
+      return body!;
+    };
+    const linkFor = async (text: string) => {
+      const body = await askEmail(text);
+      return /Check it on the page: (\S+)/.exec(body.slice(body.indexOf(text)))![1]!;
     };
 
     // If the client says nothing, nobody chases: after three days the database queues one reminder
@@ -545,7 +551,7 @@ test.describe("clients via share link", () => {
     client = await browser.newContext();
     guest = await client.newPage();
     await linkFor(fixed);
-    const statusUrl = /See where all your comments stand: (\S+)/.exec((await emailText(email, fixed, "Does it look right?"))!)![1]!;
+    const statusUrl = /See where all your comments stand: (\S+)/.exec(await askEmail(fixed))![1]!;
     await guest.goto(statusUrl);
     await expect(guest.getByRole("heading", { name: "Your feedback, Robin Client" })).toBeVisible();
     const waiting = guest.getByRole("region", { name: /Waiting for you \(2\)/ });
@@ -610,6 +616,31 @@ test.describe("clients via share link", () => {
     await page.goto(`/p/${PROJECT}/impact`);
     const stages = page.getByRole("region", { name: "Where the time goes" });
     await expect(stages).toContainText(/waiting for the client's answer\s*median of 2 times/);
+  });
+});
+
+test.describe("clients, several fixes at once", () => {
+  test("resolving a batch of one client's comments sends them one email, not one each", async ({ page }) => {
+    await login(page);
+    await page.goto(`/p/${PROJECT}/board`);
+    // The two comments Dana left in the digest test.
+    for (const text of ["Footer links are hard to read", "Swap the hero image"])
+      await page.getByRole("article").filter({ hasText: text }).getByRole("checkbox").check({ force: true });
+    await page.getByRole("toolbar", { name: "Selected comments" }).getByLabel("Move selected to").selectOption({ label: "Resolved" });
+
+    let body: string | null = null;
+    await expect.poll(async () => (body = await emailText("dana@client.test", "We've made 2 changes. Do they look right?")), { timeout: 20_000 }).not.toBeNull();
+    expect(body).toContain("Footer links are hard to read");
+    expect(body).toContain("Swap the hero image");
+    expect(body!.match(/Check it on the page: \S+/g)).toHaveLength(2); // a link for each
+    const asks = (await inbox("dana@client.test")).filter((m) => m.Subject.startsWith("Done on"));
+    expect(asks).toHaveLength(1);
+
+    // Each comment's history says the client was asked.
+    await page.getByRole("article").filter({ hasText: "Swap the hero image" }).getByRole("button").first().click();
+    const detail = page.getByRole("article", { name: /Comment \d+/ }).last();
+    await detail.getByText(/^History/).click();
+    await expect(detail.getByText("Automation asked the client to confirm the fix")).toBeVisible();
   });
 });
 

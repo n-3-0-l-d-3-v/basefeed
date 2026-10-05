@@ -32,7 +32,7 @@ confirm, without anyone chasing anyone.
 - **What it is.** A feedback tool for a Webflow studio: clients comment on the real site, the team works from a canvas and a board, and the tool does the bookkeeping in between.
 - **What changed from Feedback 2.0.** No proxy (so Cloudflare-protected sites work), comments that stay on their element when the page is edited, and client sites that stay on their own origin.
 - **What it automates.** Capturing context, labelling and sorting, assigning, noticing fixes, asking the client to confirm, reminding them, and telling Slack or n8n. People only decide.
-- **How far it is trusted.** 195 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
+- **How far it is trusted.** 196 automated tests run on every push, including thousands of random page edits against the pinning engine. What has not been verified on real client work is listed under [Known limits](#known-limits), not hidden.
 
 ## Why it exists
 
@@ -108,7 +108,7 @@ flowchart LR
 verify, instead of someone re-reading every open comment against the new page.*
 
 - **Change detection.** When a commented element changes ("font-size 56px → 48px"), the comment is flagged as likely fixed. When the element is edited beyond recognition or removed, the comment says so, and a team member can re-pin it.
-- **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note. A client who has not answered after three days (the project chooses how many, or never) gets one reminder covering everything of theirs that is waiting; it is recorded in each comment's history and never repeated.
+- **Client sign-off.** Resolving a client's comment emails them a link that opens the page on that comment, signed in, with *Looks good* / *Not yet*. "Not yet" reopens it with their note. Several of one client's comments resolved together go out as one email listing them, not one each. A client who has not answered after three days (the project chooses how many, or never) gets one reminder covering everything of theirs that is waiting; it is recorded in each comment's history and never repeated.
 
 <p align="center"><img src="docs/images/client-signoff.png" alt="What the client sees: their own site, their comment, and two buttons, Looks good and Not yet" width="100%"></p>
 
@@ -142,7 +142,7 @@ Each row is a step somebody does by hand in a feedback round run over email, cha
 | Giving it to the right person | Assignment rules | By category, the moment it is labelled; recorded as a rule |
 | Finding dead links, missing alt text, overflow, low contrast | Page check | Plain inspection of the live page, filed as pinned comments |
 | Noticing that a commented element was changed or removed | Change detection | Compared with what the element looked like when the comment was made |
-| Asking the client whether the fix is right | Database trigger + email | Sent when a client's comment is resolved, with a signed link |
+| Asking the client whether the fix is right | Database trigger + email | Sent when a client's comment is resolved, with a signed link; a batch becomes one email |
 | Reminding a client who has not answered | Daily job | Once, after the number of days the project chose, one email for everything waiting |
 | Telling the client where everything stands | Client status page | One read-only link, in every email |
 | Telling whoever runs the account where every project stands | Weekly summary | Monday 09:00 in their time zone, one email, only if there is something to report |
@@ -397,13 +397,13 @@ Visitors are unaffected: the 883-byte loader reads two flags and exits. Feedback
 
 ## Tests
 
-195 automated tests, plus type checks and lint, on every push.
+196 automated tests, plus type checks and lint, on every push.
 
 | Suite | Count | Command | What it covers |
 |---|---|---|---|
 | Anchoring | 27 | `pnpm --filter @bn/anchor test` | Unit and property tests for the "never the wrong element" guarantee and change detection |
 | Database | 96 | `pnpm db:test` | pgTAP: isolation between workspaces, forged authors, protected columns, the job ticker, client sign-off, webhook queueing, daily digests, assignment rules, client reminders, weekly summaries |
-| End to end | 23 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, editing an AI question, bulk actions on the board, the weekly summary, API security |
+| End to end | 24 | `pnpm --filter web exec playwright test` | The real stack on two origins: commenting, device widths, edits to the page, re-pinning, the page check, assignment rules, attachments, share links, sign-off by emailed link, the client reminder, the client status page, the daily digest, invites, REST and MCP, webhooks, CSV export, editing an AI question, bulk actions on the board, the weekly summary, API security |
 | Web | 26 | `pnpm --filter web test` | Triage rules, impact counts and stage timing, weekly summary numbers, webhook URL safety, CSV export (including formula-injection safety) |
 | Widget | 9 | `pnpm --filter @bn/widget test` | Page-check rules |
 | Compiler | 14 | `pnpm --filter @bn/compiler test` | Reuse before creation, idempotency, deltas, naming validation, 300 random pages per run |
